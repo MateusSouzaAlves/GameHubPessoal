@@ -1,0 +1,31 @@
+# Dependencies and build artifacts
+node_modules/
+dist/
+out/
+
+# Runtime data must never be committed to this public repository
+data/
+backups/
+cloud-cache/
+*.log
+*.dmp
+vendor/XOutput/settings.json
+
+# Local Google OAuth material and secrets
+client_secret*.json
+credentials*.json
+token*.json
+secrets*.json
+.env
+.env.*
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Test coverage
+coverage/
+.nyc_output/

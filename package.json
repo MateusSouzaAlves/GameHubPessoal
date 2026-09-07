@@ -1,0 +1,52 @@
+{
+  "name": "game-launcher-hub",
+  "version": "1.0.0",
+  "description": "A modern Game Launcher Hub with automatic game detection",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "test": "node --test",
+    "check": "node scripts/check.js",
+    "build": "electron-builder --win",
+    "pack": "electron-builder --dir"
+  },
+  "build": {
+    "appId": "com.nexus.gamelauncher",
+    "productName": "Nexus Game Launcher",
+    "win": {
+      "icon": "assets/icons/nexus.ico",
+      "target": ["nsis", "portable"]
+    },
+    "asar": true,
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json",
+      "src/**/*",
+      "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/XOutput",
+        "to": "vendor/XOutput",
+        "filter": ["XOutput.exe", "LICENSE.txt"]
+      }
+    ],
+    "directories": {
+      "output": "dist"
+    }
+  },
+  "author": "GameLauncherHub",
+  "license": "MIT",
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "chokidar": "^4.0.3",
+    "unzipper": "^0.12.3"
+  },
+  "devDependencies": {
+    "electron": "^44.2.0",
+    "electron-builder": "^26.15.3"
+  }
+}
