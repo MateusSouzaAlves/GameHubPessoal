@@ -1,6 +1,6 @@
 {
   "name": "game-launcher-hub",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A modern Game Launcher Hub with automatic game detection",
   "private": true,
   "main": "main.js",
@@ -18,6 +18,12 @@
     "win": {
       "icon": "assets/icons/nexus.ico",
       "target": ["nsis", "portable"]
+    },
+    "nsis": {
+      "artifactName": "Nexus-Game-Launcher-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Nexus-Game-Launcher-Portable-${version}.${ext}"
     },
     "asar": true,
     "files": [

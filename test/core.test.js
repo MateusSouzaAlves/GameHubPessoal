@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
+const http = require('http');
 const os = require('os');
 const path = require('path');
 
@@ -46,9 +47,11 @@ test('scanner escolhe o executável do jogo e ignora ferramentas', async t => {
   config.addScanPath(root);
   const persistence = new Persistence(directory);
   const scanner = new GameScanner(config, persistence);
-  const games = await scanner.fullScan();
+  const progress = [];
+  const games = await scanner.fullScan({ onProgress: event => progress.push(event) });
   assert.equal(games.length, 1);
   assert.match(games[0].executablePath, /NebulaQuest-Win64-Shipping\.exe$/);
+  assert.equal(progress.at(-1).phase, 'complete');
 });
 
 test('persistência remove jogos quando a raiz deixa de ser configurada', t => {
@@ -98,18 +101,50 @@ test('parser defensivo lê cabeçalho PNG', () => {
   assert.equal(readImageDimensions(Buffer.from('not-an-image')), null);
 });
 
-test('Google OAuth import fica criptografado no disco', t => {
+test('Google OAuth pertence ao aplicativo e os tokens ficam criptografados', t => {
   const directory = workspace(t);
-  const jsonPath = path.join(directory, 'oauth.json');
-  fs.writeFileSync(jsonPath, JSON.stringify({ installed: { client_id: 'public-client-id', client_secret: 'local-secret', redirect_uris: ['http://localhost'] } }));
   const safeStorage = {
     isEncryptionAvailable: () => true,
     encryptString: value => Buffer.from(value.split('').reverse().join('')),
     decryptString: value => value.toString().split('').reverse().join('')
   };
-  const service = new GoogleDriveService(path.join(directory, 'private'), safeStorage, { openExternal() {} });
-  const status = service.importCredentials(jsonPath);
-  assert.equal(status.configured, true);
+  const service = new GoogleDriveService(
+    path.join(directory, 'private'),
+    safeStorage,
+    { openExternal() {} },
+    { clientId: 'public-client-id', clientSecret: 'public-desktop-secret' }
+  );
+  assert.equal(service.getStatus().configured, true);
+  service.auth = { tokens: { accessToken: 'token-value', refreshToken: 'refresh-value', expiresAt: Date.now() + 60_000 }, profile: null };
+  service.save();
   const encrypted = fs.readFileSync(path.join(directory, 'private', 'google-drive.enc'), 'utf8');
-  assert.equal(encrypted.includes('local-secret'), false);
+  assert.equal(encrypted.includes('token-value'), false);
+  assert.equal(encrypted.includes('public-client-id'), false);
+});
+
+test('Google OAuth conclui o retorno local sem deixar o socket aberto', async t => {
+  const directory = workspace(t);
+  const safeStorage = {
+    isEncryptionAvailable: () => true,
+    encryptString: value => Buffer.from(value),
+    decryptString: value => value.toString()
+  };
+  const shell = {
+    async openExternal(authUrl) {
+      const authorization = new URL(authUrl);
+      const redirectUri = authorization.searchParams.get('redirect_uri');
+      const state = authorization.searchParams.get('state');
+      setImmediate(() => {
+        const request = http.get(`${redirectUri}?state=${encodeURIComponent(state)}&code=test-code`, response => response.resume());
+        request.on('error', () => {});
+      });
+    }
+  };
+  const service = new GoogleDriveService(path.join(directory, 'private'), safeStorage, shell, { clientId: 'public-client-id' });
+  service.exchangeCode = async () => ({ access_token: 'access', refresh_token: 'refresh', expires_in: 3600 });
+  service.fetchProfile = async () => ({ email: 'local-test@example.invalid' });
+  t.after(() => service.dispose());
+  const status = await service.connect();
+  assert.equal(status.connected, true);
+  assert.equal(service.pendingAuth, null);
 });

@@ -13,7 +13,9 @@ contextBridge.exposeInMainWorld('api', Object.freeze({
     getAll: () => ipcRenderer.invoke('library:getAll'),
     getRecentlyAdded: limit => ipcRenderer.invoke('library:getRecentlyAdded', limit),
     getRecentlyPlayed: limit => ipcRenderer.invoke('library:getRecentlyPlayed', limit),
-    onUpdated: callback => subscribe('library:updated', callback)
+    onUpdated: callback => subscribe('library:updated', callback),
+    onScanProgress: callback => subscribe('library:scanProgress', callback),
+    onCoverChanged: callback => subscribe('library:coverChanged', callback)
   }),
   game: Object.freeze({
     launch: gameId => ipcRenderer.invoke('game:launch', gameId),
@@ -42,11 +44,9 @@ contextBridge.exposeInMainWorld('api', Object.freeze({
   }),
   cloud: Object.freeze({
     getStatus: () => ipcRenderer.invoke('cloud:getStatus'),
-    importCredentials: () => ipcRenderer.invoke('cloud:importCredentials'),
     connect: () => ipcRenderer.invoke('cloud:connect'),
     syncNow: () => ipcRenderer.invoke('cloud:syncNow'),
     disconnect: () => ipcRenderer.invoke('cloud:disconnect'),
-    forget: () => ipcRenderer.invoke('cloud:forget'),
     onStatusChanged: callback => subscribe('cloud:statusChanged', callback)
   }),
   xoutput: Object.freeze({

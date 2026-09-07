@@ -4,6 +4,7 @@ const App = {
   selectedGameId: null,
 
   async init() {
+    let shouldScanInBackground = false;
     AudioUI.init();
     Search.init();
     Settings.init();
@@ -13,6 +14,7 @@ const App = {
     try {
       const config = await window.api.config.get();
       this.applyExperienceSettings(config);
+      shouldScanInBackground = Boolean(config.scanPaths?.length);
       await this.loadLibrary();
       await this.loadDashboard();
       this.finishBoot();
@@ -27,6 +29,8 @@ const App = {
     }
 
     window.api.library.onUpdated(() => this.reloadLibrary({ quiet: true }));
+    window.api.library.onScanProgress(progress => this.updateScanProgress(progress));
+    window.api.library.onCoverChanged(game => this.updateGameCover(game));
     window.api.game.onStatusChanged(() => this.reloadLibrary({ quiet: true }));
     window.api.saves.onBackupCreated(event => {
       Helpers.toast(`Backup automático criado para ${Library.find(event.gameId)?.name || 'o jogo'}.`, 'success');
@@ -34,6 +38,7 @@ const App = {
     });
     window.api.cloud.onStatusChanged(status => this.updateCloudIndicator(status));
     window.api.xoutput.onStatusChanged(status => this.updateXOutputIndicator(status));
+    if (shouldScanInBackground) setTimeout(() => this.refreshLibrary({ quiet: true }), 0);
   },
 
   bindEvents() {
@@ -80,7 +85,7 @@ const App = {
   },
 
   async loadLibrary() {
-    const games = await window.api.library.scan();
+    const games = await window.api.library.getAll();
     this.renderLibrary(games);
     if (games.length) await this.loadRecentSections();
   },
@@ -125,6 +130,7 @@ const App = {
     const button = document.getElementById('btnRefresh');
     button.classList.add('spinning');
     button.disabled = true;
+    this.showScanStatus('Procurando jogos...', 0, 0);
     try {
       const games = await window.api.library.scan();
       this.renderLibrary(games, true);
@@ -138,6 +144,49 @@ const App = {
       this.isRefreshing = false;
       button.classList.remove('spinning');
       button.disabled = false;
+      setTimeout(() => this.hideScanStatus(), 650);
+    }
+  },
+
+  updateScanProgress(progress = {}) {
+    if (progress.phase === 'complete') {
+      this.showScanStatus(progress.message || 'Biblioteca atualizada', progress.total || 1, progress.total || 1);
+      return;
+    }
+    this.showScanStatus(progress.message || 'Procurando jogos...', progress.current || 0, progress.total || 0);
+  },
+
+  showScanStatus(message, current, total) {
+    const banner = document.getElementById('scanBanner');
+    const bar = document.getElementById('scanProgressBar');
+    document.getElementById('scanStatusText').textContent = message;
+    banner.hidden = false;
+    if (total > 0) {
+      bar.max = total;
+      bar.value = Math.min(current, total);
+      bar.removeAttribute('data-indeterminate');
+    } else {
+      bar.removeAttribute('value');
+      bar.setAttribute('data-indeterminate', 'true');
+    }
+  },
+
+  hideScanStatus() {
+    if (!this.isRefreshing) document.getElementById('scanBanner').hidden = true;
+  },
+
+  updateGameCover(game) {
+    if (!game?.id || !game.coverUrl) return;
+    const libraryGame = Library.find(game.id);
+    if (libraryGame) libraryGame.coverUrl = game.coverUrl;
+    document.querySelectorAll(`[data-game-id="${game.id}"] .card-cover`).forEach(image => {
+      image.removeAttribute('data-fallback');
+      image.src = game.coverUrl;
+    });
+    if (this.selectedGameId === game.id) {
+      document.getElementById('consoleHero').style.setProperty('--hero-cover', `url("${String(game.coverUrl).replace(/"/g, '%22')}")`);
+      const detailCover = document.getElementById('gameModalCover');
+      if (!document.getElementById('gameModal').hidden) detailCover.src = game.coverUrl;
     }
   },
 

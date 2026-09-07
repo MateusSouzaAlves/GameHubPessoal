@@ -65,6 +65,11 @@
   </header>
 
   <main id="mainContent" class="main-content">
+    <div id="scanBanner" class="scan-banner" hidden role="status" aria-live="polite">
+      <span class="scan-pulse" aria-hidden="true"></span>
+      <span id="scanStatusText">Procurando jogos...</span>
+      <progress id="scanProgressBar" max="1"></progress>
+    </div>
     <section id="consoleHero" class="console-hero" aria-live="polite">
       <div class="hero-copy">
         <span class="hero-eyebrow" id="heroEyebrow">SUA BIBLIOTECA</span>
@@ -117,7 +122,7 @@
       <div class="empty-orbit"><span></span></div>
       <h2 class="empty-title">Sua biblioteca está esperando</h2>
       <p class="empty-description">Adicione uma pasta e o Nexus encontrará seus jogos automaticamente.</p>
-      <button class="btn-primary" id="btnEmptySettings" data-gamepad>Configurar biblioteca</button>
+      <button class="btn-primary" id="btnEmptySettings" data-gamepad>Adicionar pasta de jogos</button>
     </div>
     <div id="noResultsState" class="empty-state" hidden>
       <h2 class="empty-title">Nenhum resultado</h2>
@@ -140,42 +145,36 @@
       </div>
       <div class="modal-body settings-grid">
         <section class="settings-section settings-span">
-          <div class="settings-heading"><div><h3>Biblioteca</h3><p>Pastas monitoradas e precisão da detecção.</p></div><button class="btn-secondary" id="btnAddPath" data-gamepad>Adicionar pasta</button></div>
+          <div class="settings-heading"><div><h3>Onde estão seus jogos?</h3><p>Escolha a pasta que contém uma subpasta para cada jogo.</p></div><button class="btn-primary" id="btnAddPath" data-gamepad>Adicionar pasta</button></div>
           <div id="scanPathsList" class="scan-paths-list"></div>
-          <label class="field-row"><span><strong>Profundidade da busca</strong><small>Mais níveis encontram estruturas complexas, mas tornam a leitura mais longa.</small></span><input id="scanDepth" type="number" min="1" max="8" data-gamepad></label>
+          <p class="simple-note">O Nexus monitora essas pastas e atualiza a biblioteca sozinho.</p>
         </section>
 
         <section class="settings-section">
-          <div class="settings-heading"><div><h3>Save Guardian</h3><p>Snapshots locais automáticos e incrementais.</p></div><span class="status-pill success">Ativo localmente</span></div>
-          <label class="toggle-row"><span><strong>Backup automático</strong><small>Ao encerrar um jogo e no intervalo definido.</small></span><input id="autoBackup" type="checkbox" data-gamepad><i></i></label>
-          <label class="field-row"><span><strong>Intervalo</strong><small>Em minutos.</small></span><input id="backupInterval" type="number" min="5" max="1440" data-gamepad></label>
-          <label class="field-row"><span><strong>Versões por jogo</strong><small>As mais antigas são removidas localmente.</small></span><input id="backupRetention" type="number" min="1" max="100" data-gamepad></label>
-          <div class="button-row"><button class="btn-primary" id="btnBackupAll" data-gamepad>Backup de todos</button><button class="btn-secondary" id="btnOpenBackups" data-gamepad>Abrir pasta</button></div>
+          <div class="settings-heading"><div><h3>Proteção dos saves</h3><p>Guarda versões locais dos seus saves automaticamente.</p></div></div>
+          <label class="toggle-row"><span><strong>Proteger meus saves</strong><small>Cria um backup ao fechar um jogo.</small></span><input id="autoBackup" type="checkbox" data-gamepad><i></i></label>
+          <div class="button-row"><button class="btn-primary" id="btnBackupAll" data-gamepad>Fazer backup agora</button><button class="btn-secondary" id="btnOpenBackups" data-gamepad>Ver backups</button></div>
         </section>
 
         <section class="settings-section cloud-settings">
-          <div class="settings-heading"><div><h3>Google Drive</h3><p>Backups no espaço privado do aplicativo.</p></div><span id="cloudStatusPill" class="status-pill">Não conectado</span></div>
-          <div class="privacy-note"><strong>Repositório público, dados privados.</strong><span>Nenhuma credencial vem no código. Importe localmente um OAuth JSON do tipo “Aplicativo para computador”; ele e os tokens serão criptografados pelo Windows.</span></div>
+          <div class="settings-heading"><div><h3>Google Drive</h3><p>Tenha uma cópia dos backups na sua conta.</p></div><span id="cloudStatusPill" class="status-pill">Não conectado</span></div>
+          <p id="cloudStatusHelp" class="simple-note">Clique em conectar; o login será concluído no navegador.</p>
           <div id="cloudIdentity" class="cloud-identity" hidden><span class="cloud-avatar">G</span><div><strong id="cloudEmail">Conta Google</strong><small id="cloudLastSync">Ainda não sincronizado</small></div></div>
           <div class="button-row wrap">
-            <button class="btn-secondary" id="btnImportGoogle" data-gamepad>1. Importar OAuth JSON</button>
-            <button class="btn-primary" id="btnConnectGoogle" data-gamepad>2. Entrar com Google</button>
+            <button class="btn-primary" id="btnConnectGoogle" data-gamepad>Conectar com Google</button>
             <button class="btn-primary" id="btnSyncGoogle" data-gamepad>Sincronizar agora</button>
             <button class="btn-secondary" id="btnDisconnectGoogle" data-gamepad>Desconectar</button>
-            <button class="btn-danger" id="btnForgetGoogle" data-gamepad>Esquecer credenciais</button>
           </div>
-          <label class="toggle-row"><span><strong>Sincronização automática</strong><small>Envia novos backups quando houver conexão.</small></span><input id="cloudAutoSync" type="checkbox" data-gamepad><i></i></label>
+          <label class="toggle-row"><span><strong>Enviar automaticamente</strong><small>Sincroniza novos backups quando houver conexão.</small></span><input id="cloudAutoSync" type="checkbox" data-gamepad><i></i></label>
         </section>
 
         <section class="settings-section">
-          <div class="settings-heading"><div><h3>Experiência</h3><p>Interface de console e acessibilidade.</p></div></div>
-          <label class="toggle-row"><span><strong>Sons da interface</strong><small>Feedback sutil ao navegar e selecionar.</small></span><input id="interfaceSounds" type="checkbox" data-gamepad><i></i></label>
-          <label class="toggle-row"><span><strong>Animações</strong><small>Entrada, foco, profundidade e transições.</small></span><input id="interfaceAnimations" type="checkbox" data-gamepad><i></i></label>
-          <div class="settings-heading controller-heading"><div><h3>XOutput integrado</h3><p>A configuração fica local e é preservada entre atualizações.</p></div><span id="xoutputStatusPill" class="status-pill">Verificando</span></div>
-          <div class="button-row"><button class="btn-primary" id="btnLaunchXOutputSettings" data-gamepad>Abrir XOutput</button><button class="btn-secondary" id="btnOpenXOutputFolder" data-gamepad>Abrir configuração</button></div>
+          <div class="settings-heading"><div><h3>Interface</h3><p>Ajustes rápidos de aparência e controle.</p></div></div>
+          <label class="toggle-row"><span><strong>Sons</strong><small>Som ao navegar e selecionar.</small></span><input id="interfaceSounds" type="checkbox" data-gamepad><i></i></label>
+          <label class="toggle-row"><span><strong>Animações</strong><small>Movimentos e transições da tela.</small></span><input id="interfaceAnimations" type="checkbox" data-gamepad><i></i></label>
+          <div class="controller-action"><div><strong>Configurar controle</strong><small id="xoutputStatusPill" class="status-pill">Verificando</small></div><button class="btn-secondary" id="btnLaunchXOutputSettings" data-gamepad>Abrir XOutput</button></div>
         </section>
       </div>
-      <div class="modal-footer"><span id="settingsSaveStatus">Use o botão para aplicar as preferências</span><button class="btn-primary" id="btnSaveSettings" data-gamepad>Salvar preferências</button></div>
     </div>
   </div>
 

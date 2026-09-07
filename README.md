@@ -31,7 +31,7 @@ O instalador é a opção recomendada para a maioria das pessoas. Ele já conté
 **Não é necessário instalar Node.js, npm, Git ou usar o terminal.**
 
 1. Clique em **Baixar para Windows** acima.
-2. Na versão mais recente, abra a área **Assets** e baixe `Nexus-Game-Launcher-Setup-1.0.0.exe`.
+2. Na versão mais recente, abra a área **Assets** e baixe `Nexus-Game-Launcher-Setup-1.1.0.exe`.
 3. Abra o arquivo baixado e aguarde a instalação automática.
 4. Ao terminar, abra o **Nexus Game Launcher** pelo menu Iniciar ou pelo atalho criado no Windows.
 
@@ -48,7 +48,7 @@ O instalador é a opção recomendada para a maioria das pessoas. Ele já conté
 
 ## Versão portátil
 
-Quem não quiser instalar pode baixar `Nexus-Game-Launcher-Portable-1.0.0.exe` na mesma página de Releases. A versão portátil abre diretamente e oferece os mesmos recursos principais.
+Quem não quiser instalar pode baixar `Nexus-Game-Launcher-Portable-1.1.0.exe` na mesma página de Releases. A versão portátil abre diretamente e oferece os mesmos recursos principais.
 
 Ela ainda cria uma pasta privada de dados do usuário no Windows. “Portátil” significa que o aplicativo não passa pelo instalador; não significa que saves, capas e preferências serão gravados ao lado do executável.
 
@@ -64,9 +64,9 @@ Ela ainda cria uma pasta privada de dados do usuário no Windows. “Portátil�
 Depois de abrir o Nexus pela primeira vez:
 
 1. Entre em **Configurações**.
-2. Clique em **Adicionar pasta**.
+2. Clique em **Adicionar pasta** (ou use **Adicionar pasta de jogos** na tela inicial).
 3. Selecione a pasta que contém seus jogos. Cada jogo deve estar, de preferência, em sua própria subpasta.
-4. Aguarde a análise. O Nexus escolherá o executável mais provável e procurará a melhor capa disponível.
+4. A biblioteca aparece assim que a análise termina. As capas são completadas em segundo plano, sem bloquear o aplicativo.
 5. Conecte um controle, se desejar. A navegação é reconhecida automaticamente pela Gamepad API.
 
 Para um jogo com saves em um local incomum, abra os detalhes do jogo e use **Adicionar pasta de save**. A partir daí, essa pasta participa dos backups automáticos.
@@ -85,17 +85,20 @@ Para um jogo com saves em um local incomum, abra os detalhes do jogo e use **Adi
 
 ## Google Drive opcional
 
-Nenhuma conta ou credencial do Google vem dentro do aplicativo. Cada pessoa conecta a própria conta localmente.
+Abra **Configurações → Google Drive**, clique em **Conectar com Google** e conclua o login no navegador. Não é necessário localizar nem importar um arquivo OAuth no computador.
 
-1. Crie ou selecione um projeto no [Google Cloud Console](https://console.cloud.google.com/).
-2. Ative a **Google Drive API**.
-3. Configure a tela de consentimento OAuth. Enquanto o projeto estiver em teste, adicione sua conta em **Usuários de teste**.
-4. Crie um **ID do cliente OAuth** do tipo **Aplicativo para computador** e baixe o JSON.
-5. No Nexus, abra **Configurações → Google Drive → Importar OAuth JSON**.
-6. Clique em **Entrar com Google** e conclua o login no navegador.
-7. Mantenha a sincronização automática ativa ou use **Sincronizar agora**.
+O Nexus utiliza apenas o espaço privado `appDataFolder` do Drive. Os tokens da conta são criptografados localmente com o armazenamento seguro do Windows.
 
-O Nexus utiliza apenas o espaço privado `appDataFolder` do Drive. O JSON OAuth e os tokens são criptografados localmente com o armazenamento seguro do Windows e nunca são enviados ao repositório ou incluídos no instalador.
+### Habilitar o login na versão distribuída
+
+Esta etapa é feita uma única vez por quem publica o aplicativo, não por cada usuário:
+
+1. Crie ou selecione um projeto no [Google Cloud Console](https://console.cloud.google.com/), ative a **Google Drive API** e configure a tela de consentimento.
+2. Crie um cliente OAuth do tipo **Aplicativo para computador**.
+3. Renomeie o JSON baixado para `google-oauth-client.json` e coloque-o em `assets/` antes de gerar o instalador. Esse caminho é ignorado pelo Git. Também é possível copiar `assets/google-oauth-client.example.json` e preencher a cópia local; clientes desktop são clientes públicos.
+4. Gere e publique o instalador normalmente. A partir daí, o usuário vê apenas o botão **Conectar com Google**.
+
+Durante o desenvolvimento, também é possível definir `NEXUS_GOOGLE_CLIENT_ID` e `NEXUS_GOOGLE_CLIENT_SECRET` no ambiente em vez de alterar o arquivo.
 
 ## Privacidade e segurança
 
@@ -105,7 +108,7 @@ Os dados ficam normalmente em `%APPDATA%\Nexus Game Launcher\data`:
 - capas em cache;
 - análises de uso locais;
 - versões de backup dos saves;
-- credenciais Google criptografadas;
+- tokens da conta Google criptografados;
 - configuração local do XOutput.
 
 O aplicativo não possui servidor próprio nem envia telemetria. O estado sincronizado exclui caminhos de executáveis e outras informações locais desnecessárias.
@@ -139,15 +142,15 @@ npm run build
 
 O build cria em `dist/`:
 
-- `Nexus-Game-Launcher-Setup-1.0.0.exe` — instalador recomendado;
-- `Nexus-Game-Launcher-Portable-1.0.0.exe` — versão portátil.
+- `Nexus-Game-Launcher-Setup-1.1.0.exe` — instalador recomendado;
+- `Nexus-Game-Launcher-Portable-1.1.0.exe` — versão portátil.
 
 ### Publicar o botão de download
 
 O botão no início deste README aponta para a versão mais recente em **GitHub Releases**. Para disponibilizar uma nova versão ao público:
 
 1. Execute os testes e `npm run build`.
-2. Crie uma nova Release no GitHub, por exemplo `v1.0.0`.
+2. Crie uma nova Release no GitHub, por exemplo `v1.1.0`.
 3. Anexe os dois arquivos `.exe` gerados em `dist/`.
 4. Publique a Release como versão mais recente.
 

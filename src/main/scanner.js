@@ -15,39 +15,93 @@ class GameScanner {
   constructor(configManager, persistence) {
     this.config = configManager;
     this.persistence = persistence;
+    this.activeScan = null;
+    this.progressListeners = new Set();
   }
 
-  async fullScan() {
+  async fullScan(options = {}) {
+    const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+    if (onProgress) this.progressListeners.add(onProgress);
+    if (!this.activeScan) {
+      this.activeScan = this.runFullScan().finally(() => { this.activeScan = null; });
+    }
+    try {
+      return await this.activeScan;
+    } finally {
+      if (onProgress) this.progressListeners.delete(onProgress);
+    }
+  }
+
+  reportProgress(progress) {
+    for (const listener of this.progressListeners) {
+      try { listener(progress); } catch {}
+    }
+  }
+
+  async runFullScan() {
     const configuredRoots = this.config.get('scanPaths') || [];
     const availableRoots = configuredRoots.filter(root => fs.existsSync(root));
-    const discovered = [];
     console.log(`[Scanner] Scanning ${availableRoots.length}/${configuredRoots.length} configured path(s)`);
+    this.reportProgress({ phase: 'discovering', current: 0, total: 0, message: 'Lendo as pastas configuradas...' });
 
+    const folders = [];
     for (const root of availableRoots) {
-      discovered.push(...await this.scanDirectory(root));
+      folders.push(...await this.listGameFolders(root));
     }
+
+    const discovered = [];
+    let cursor = 0;
+    let completed = 0;
+    const concurrency = Math.min(4, folders.length);
+    this.reportProgress({ phase: 'scanning', current: 0, total: folders.length, message: this.progressMessage(0, folders.length) });
+    const workers = Array.from({ length: concurrency }, async () => {
+      while (cursor < folders.length) {
+        const index = cursor++;
+        const { gamePath, folderName } = folders[index];
+        const game = await this.analyzeGameFolder(gamePath, folderName);
+        if (game) discovered.push(game);
+        completed += 1;
+        this.reportProgress({
+          phase: 'scanning',
+          current: completed,
+          total: folders.length,
+          found: discovered.length,
+          message: this.progressMessage(completed, folders.length)
+        });
+      }
+    });
+    await Promise.all(workers);
 
     const unique = new Map();
     for (const game of discovered) unique.set(game.gamePath.toLowerCase(), game);
     const library = this.persistence.synchronizeScan([...unique.values()], configuredRoots, availableRoots);
     console.log(`[Scanner] Scan complete. ${library.length} game(s) in library.`);
+    this.reportProgress({ phase: 'complete', current: folders.length, total: folders.length, found: library.length, message: `${library.length} jogo(s) encontrado(s)` });
     return library;
   }
 
-  async scanDirectory(rootPath) {
-    const games = [];
+  progressMessage(current, total) {
+    if (!total) return 'Nenhuma subpasta para analisar';
+    return `Analisando ${current} de ${total} pasta(s)`;
+  }
+
+  async listGameFolders(rootPath) {
     try {
       const entries = await fs.promises.readdir(rootPath, { withFileTypes: true });
-      const directories = entries.filter(entry => entry.isDirectory());
-      for (const entry of directories) {
-        if (this.config.isExcludedFolder(entry.name) || this.config.isUtility(entry.name)) continue;
-        const game = await this.analyzeGameFolder(path.join(rootPath, entry.name), entry.name);
-        if (game) games.push(game);
-      }
+      return entries
+        .filter(entry => entry.isDirectory() && !entry.isSymbolicLink())
+        .filter(entry => !this.config.isExcludedFolder(entry.name) && !this.config.isUtility(entry.name))
+        .map(entry => ({ gamePath: path.join(rootPath, entry.name), folderName: entry.name }));
     } catch (error) {
       console.error(`[Scanner] Failed to scan ${rootPath}:`, error.message);
+      return [];
     }
-    return games;
+  }
+
+  async scanDirectory(rootPath) {
+    const folders = await this.listGameFolders(rootPath);
+    const games = await Promise.all(folders.map(({ gamePath, folderName }) => this.analyzeGameFolder(gamePath, folderName)));
+    return games.filter(Boolean);
   }
 
   async analyzeGameFolder(gamePath, folderName) {

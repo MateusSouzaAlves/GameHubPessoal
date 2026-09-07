@@ -32,6 +32,28 @@ let launcher = null;
 let saveManager = null;
 let googleDrive = null;
 let xoutput = null;
+const coverQueue = [];
+const queuedCoverIds = new Set();
+const coverAttemptedAt = new Map();
+let activeCoverWorkers = 0;
+
+function loadGoogleOAuthClient() {
+  const environmentClientId = String(process.env.NEXUS_GOOGLE_CLIENT_ID || '').trim();
+  const environmentClientSecret = String(process.env.NEXUS_GOOGLE_CLIENT_SECRET || '').trim();
+  if (environmentClientId) return { clientId: environmentClientId, clientSecret: environmentClientSecret || null };
+  try {
+    const configPath = path.join(__dirname, 'assets', 'google-oauth-client.json');
+    const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const desktopClient = parsed.installed || parsed;
+    return {
+      clientId: String(desktopClient.clientId || desktopClient.client_id || '').trim(),
+      clientSecret: String(desktopClient.clientSecret || desktopClient.client_secret || '').trim() || null
+    };
+  } catch (error) {
+    console.warn('[GoogleDrive] Application OAuth configuration unavailable:', error.message);
+    return { clientId: '', clientSecret: null };
+  }
+}
 
 function migrateDevelopmentData(destination) {
   if (app.isPackaged) return;
@@ -58,7 +80,7 @@ function initializeServices() {
   persistence = new Persistence(dataDir);
   scanner = new GameScanner(configManager, persistence);
   coverManager = new CoverManager(dataDir);
-  googleDrive = new GoogleDriveService(path.join(dataDir, 'private'), safeStorage, shell);
+  googleDrive = new GoogleDriveService(path.join(dataDir, 'private'), safeStorage, shell, loadGoogleOAuthClient());
   launcher = new GameLauncher(persistence, (gameId, status, details) => {
     sendToRenderer('game:statusChanged', { gameId, status });
     sendToRenderer('library:updated');
@@ -165,9 +187,8 @@ function assertGameId(gameId) {
   return gameId;
 }
 
-async function enrichGame(game) {
-  let coverPath = await coverManager.findCover(game);
-  if (coverPath) persistence.updateCover(game.id, coverPath);
+function serializeGame(game) {
+  const coverPath = coverManager.getCachedCover(game.id);
   const coverKey = coverPath ? path.basename(coverPath) : null;
   return {
     ...game,
@@ -176,18 +197,41 @@ async function enrichGame(game) {
   };
 }
 
-async function enrichMany(games) {
-  const result = [];
-  const concurrency = 4;
-  let cursor = 0;
-  const workers = Array.from({ length: Math.min(concurrency, games.length) }, async () => {
-    while (cursor < games.length) {
-      const index = cursor++;
-      result[index] = await enrichGame(games[index]);
-    }
-  });
-  await Promise.all(workers);
-  return result;
+function publicGames(games, options = {}) {
+  const snapshot = games.map(serializeGame);
+  queueMissingCovers(games, options);
+  return snapshot;
+}
+
+function queueMissingCovers(games, options = {}) {
+  const now = Date.now();
+  for (const game of games) {
+    if (coverManager.getCachedCover(game.id) || queuedCoverIds.has(game.id)) continue;
+    const lastAttempt = coverAttemptedAt.get(game.id) || 0;
+    if (!options.force && now - lastAttempt < 30 * 60_000) continue;
+    queuedCoverIds.add(game.id);
+    coverQueue.push(game);
+  }
+  setImmediate(runCoverQueue);
+}
+
+function runCoverQueue() {
+  while (activeCoverWorkers < 2 && coverQueue.length) {
+    const game = coverQueue.shift();
+    activeCoverWorkers += 1;
+    coverAttemptedAt.set(game.id, Date.now());
+    coverManager.findCover(game).then(coverPath => {
+      if (!coverPath) return;
+      const updated = persistence.updateCover(game.id, coverPath);
+      if (updated) sendToRenderer('library:coverChanged', serializeGame(updated));
+    }).catch(error => {
+      console.warn(`[CoverManager] Background cover lookup failed for ${game.name}:`, error.message);
+    }).finally(() => {
+      queuedCoverIds.delete(game.id);
+      activeCoverWorkers -= 1;
+      runCoverQueue();
+    });
+  }
 }
 
 function publicCloudSnapshot() {
@@ -270,10 +314,13 @@ function scheduleCloudSync() {
 }
 
 function registerIpcHandlers() {
-  ipcMain.handle('library:scan', async () => enrichMany(await scanner.fullScan()));
-  ipcMain.handle('library:getAll', async () => enrichMany(persistence.getAll()));
-  ipcMain.handle('library:getRecentlyAdded', async (_, limit) => enrichMany(persistence.getRecentlyAdded(Math.min(20, Math.max(1, Number(limit) || 5)))));
-  ipcMain.handle('library:getRecentlyPlayed', async (_, limit) => enrichMany(persistence.getRecentlyPlayed(Math.min(20, Math.max(1, Number(limit) || 5)))));
+  ipcMain.handle('library:scan', async () => {
+    const games = await scanner.fullScan({ onProgress: progress => sendToRenderer('library:scanProgress', progress) });
+    return publicGames(games, { force: true });
+  });
+  ipcMain.handle('library:getAll', () => publicGames(persistence.getAll()));
+  ipcMain.handle('library:getRecentlyAdded', (_, limit) => publicGames(persistence.getRecentlyAdded(Math.min(20, Math.max(1, Number(limit) || 5)))));
+  ipcMain.handle('library:getRecentlyPlayed', (_, limit) => publicGames(persistence.getRecentlyPlayed(Math.min(20, Math.max(1, Number(limit) || 5)))));
 
   ipcMain.handle('game:launch', async (_, gameId) => launcher.launch(assertGameId(gameId)));
   ipcMain.handle('game:getStatus', (_, gameId) => launcher.getGameStatus(assertGameId(gameId)));
@@ -298,16 +345,13 @@ function registerIpcHandlers() {
     if (result.canceled || !result.filePaths[0]) return { success: false, canceled: true };
     if (!configManager.addScanPath(result.filePaths[0])) return { success: false, message: 'Pasta já configurada.' };
     await watcher?.restart();
-    sendToRenderer('library:updated');
     return { success: true, path: result.filePaths[0] };
   });
   ipcMain.handle('config:removeScanPath', async (_, scanPath) => {
     if (typeof scanPath !== 'string') throw new Error('Pasta inválida.');
     const removed = configManager.removeScanPath(scanPath);
     if (removed) {
-      await scanner.fullScan();
       await watcher?.restart();
-      sendToRenderer('library:updated');
     }
     return removed;
   });
@@ -336,15 +380,6 @@ function registerIpcHandlers() {
   ipcMain.handle('analytics:getSummary', () => persistence.getAnalyticsSummary());
 
   ipcMain.handle('cloud:getStatus', () => googleDrive.getStatus());
-  ipcMain.handle('cloud:importCredentials', async () => {
-    const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Selecionar credenciais OAuth do Google',
-      properties: ['openFile'],
-      filters: [{ name: 'Google OAuth JSON', extensions: ['json'] }]
-    });
-    if (result.canceled || !result.filePaths[0]) return { canceled: true, ...googleDrive.getStatus() };
-    return googleDrive.importCredentials(result.filePaths[0]);
-  });
   ipcMain.handle('cloud:connect', async () => {
     const status = await googleDrive.connect();
     const cloud = configManager.get('cloud');
@@ -360,12 +395,6 @@ function registerIpcHandlers() {
     scheduleCloudSync();
     return status;
   });
-  ipcMain.handle('cloud:forget', () => {
-    configManager.set('cloud', { ...configManager.get('cloud'), enabled: false });
-    scheduleCloudSync();
-    return googleDrive.forget();
-  });
-
   ipcMain.handle('xoutput:launch', () => xoutput.launch());
   ipcMain.handle('xoutput:status', () => xoutput.getStatus());
   ipcMain.handle('xoutput:openFolder', async () => {
@@ -399,6 +428,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   saveManager?.stop();
+  googleDrive?.dispose();
   if (cloudTimer) clearInterval(cloudTimer);
   watcher?.stop().catch(() => {});
 });
