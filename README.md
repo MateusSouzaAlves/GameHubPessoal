@@ -31,7 +31,7 @@ O instalador é a opção recomendada para a maioria das pessoas. Ele já conté
 **Não é necessário instalar Node.js, npm, Git ou usar o terminal.**
 
 1. Clique em **Baixar para Windows** acima.
-2. Na versão mais recente, abra a área **Assets** e baixe `Nexus Game Launcher Setup 1.0.0.exe`.
+2. Na versão mais recente, abra a área **Assets** e baixe `Nexus-Game-Launcher-Setup-1.0.0.exe`.
 3. Abra o arquivo baixado e aguarde a instalação automática.
 4. Ao terminar, abra o **Nexus Game Launcher** pelo menu Iniciar ou pelo atalho criado no Windows.
 
@@ -48,7 +48,7 @@ O instalador é a opção recomendada para a maioria das pessoas. Ele já conté
 
 ## Versão portátil
 
-Quem não quiser instalar pode baixar `Nexus Game Launcher 1.0.0.exe` na mesma página de Releases. A versão portátil abre diretamente e oferece os mesmos recursos principais.
+Quem não quiser instalar pode baixar `Nexus-Game-Launcher-Portable-1.0.0.exe` na mesma página de Releases. A versão portátil abre diretamente e oferece os mesmos recursos principais.
 
 Ela ainda cria uma pasta privada de dados do usuário no Windows. “Portátil” significa que o aplicativo não passa pelo instalador; não significa que saves, capas e preferências serão gravados ao lado do executável.
 
@@ -139,8 +139,8 @@ npm run build
 
 O build cria em `dist/`:
 
-- `Nexus Game Launcher Setup 1.0.0.exe` — instalador recomendado;
-- `Nexus Game Launcher 1.0.0.exe` — versão portátil.
+- `Nexus-Game-Launcher-Setup-1.0.0.exe` — instalador recomendado;
+- `Nexus-Game-Launcher-Portable-1.0.0.exe` — versão portátil.
 
 ### Publicar o botão de download
 
