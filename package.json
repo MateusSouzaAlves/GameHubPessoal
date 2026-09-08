@@ -1,6 +1,6 @@
 {
   "name": "game-launcher-hub",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "A modern Game Launcher Hub with automatic game detection",
   "private": true,
   "main": "main.js",

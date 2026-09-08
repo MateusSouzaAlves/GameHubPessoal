@@ -52,6 +52,7 @@ test('scanner escolhe o executável do jogo e ignora ferramentas', async t => {
   assert.equal(games.length, 1);
   assert.match(games[0].executablePath, /NebulaQuest-Win64-Shipping\.exe$/);
   assert.equal(progress.at(-1).phase, 'complete');
+  assert.equal(progress.every(event => event.backgroundWorker === true), true);
 });
 
 test('persistência remove jogos quando a raiz deixa de ser configurada', t => {

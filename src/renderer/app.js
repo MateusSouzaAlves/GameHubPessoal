@@ -38,7 +38,7 @@ const App = {
     });
     window.api.cloud.onStatusChanged(status => this.updateCloudIndicator(status));
     window.api.xoutput.onStatusChanged(status => this.updateXOutputIndicator(status));
-    if (shouldScanInBackground) setTimeout(() => this.refreshLibrary({ quiet: true }), 0);
+    if (shouldScanInBackground) this.scheduleBackgroundScan();
   },
 
   bindEvents() {
@@ -146,6 +146,14 @@ const App = {
       button.disabled = false;
       setTimeout(() => this.hideScanStatus(), 650);
     }
+  },
+
+  scheduleBackgroundScan() {
+    setTimeout(() => {
+      const start = () => this.refreshLibrary({ quiet: true });
+      if ('requestIdleCallback' in window) window.requestIdleCallback(start, { timeout: 1500 });
+      else setTimeout(start, 0);
+    }, document.body.classList.contains('reduce-motion') ? 250 : 1100);
   },
 
   updateScanProgress(progress = {}) {

@@ -23,6 +23,7 @@ let mainWindow = null;
 let watcher = null;
 let cloudTimer = null;
 let resizeTimer = null;
+let watcherStartTimer = null;
 let dataDir = null;
 let configManager = null;
 let persistence = null;
@@ -187,8 +188,14 @@ function assertGameId(gameId) {
   return gameId;
 }
 
-function serializeGame(game) {
-  const coverPath = coverManager.getCachedCover(game.id);
+function resolveStoredCover(game) {
+  if (!game?.coverCache) return null;
+  const coverPath = path.resolve(game.coverCache);
+  return isSubPath(coverManager.cacheDir, coverPath) && fs.existsSync(coverPath) ? coverPath : null;
+}
+
+function serializeGame(game, knownCoverPath = undefined) {
+  const coverPath = knownCoverPath === undefined ? resolveStoredCover(game) : knownCoverPath;
   const coverKey = coverPath ? path.basename(coverPath) : null;
   return {
     ...game,
@@ -198,15 +205,20 @@ function serializeGame(game) {
 }
 
 function publicGames(games, options = {}) {
-  const snapshot = games.map(serializeGame);
-  queueMissingCovers(games, options);
+  const missingCovers = [];
+  const snapshot = games.map(game => {
+    const coverPath = resolveStoredCover(game);
+    if (!coverPath) missingCovers.push(game);
+    return serializeGame(game, coverPath);
+  });
+  queueMissingCovers(missingCovers, options);
   return snapshot;
 }
 
 function queueMissingCovers(games, options = {}) {
   const now = Date.now();
   for (const game of games) {
-    if (coverManager.getCachedCover(game.id) || queuedCoverIds.has(game.id)) continue;
+    if (queuedCoverIds.has(game.id)) continue;
     const lastAttempt = coverAttemptedAt.get(game.id) || 0;
     if (!options.force && now - lastAttempt < 30 * 60_000) continue;
     queuedCoverIds.add(game.id);
@@ -416,7 +428,8 @@ app.whenReady().then(async () => {
   registerIpcHandlers();
   createWindow();
   watcher = new FolderWatcher(configManager, scanner, () => sendToRenderer('library:updated'));
-  watcher.start();
+  watcherStartTimer = setTimeout(() => watcher?.start(), 2500);
+  watcherStartTimer.unref?.();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -428,7 +441,9 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   saveManager?.stop();
+  scanner?.dispose();
   googleDrive?.dispose();
   if (cloudTimer) clearInterval(cloudTimer);
+  if (watcherStartTimer) clearTimeout(watcherStartTimer);
   watcher?.stop().catch(() => {});
 });

@@ -12,12 +12,15 @@ class FolderWatcher {
     this.onUpdate = onUpdate; // Callback when library changes
     this.watchers = [];
     this.debounceTimers = new Map();
+    this.started = false;
   }
 
   /**
    * Start watching all configured scan paths.
    */
   start() {
+    if (this.started) return;
+    this.started = true;
     const scanPaths = this.config.get('scanPaths') || [];
 
     for (const scanPath of scanPaths) {
@@ -34,7 +37,9 @@ class FolderWatcher {
     if (!fs.existsSync(dirPath)) return;
     try {
       const watcher = chokidar.watch(dirPath, {
-        depth: Math.min(9, (this.config.get('scanDepth') || 4) + 1),
+        // A varredura profunda acontece na worker. O watcher acompanha somente
+        // a raiz e as pastas de cada jogo para não indexar milhares de assets.
+        depth: 1,
         ignoreInitial: true,     // Don't trigger events for existing files
         persistent: true,
         awaitWriteFinish: {
@@ -126,6 +131,7 @@ class FolderWatcher {
    * Stop all watchers.
    */
   async stop() {
+    this.started = false;
     for (const watcher of this.watchers) {
       await watcher.close();
     }

@@ -3,6 +3,7 @@ const Library = {
   filteredGames: [],
   currentSort: 'name',
   currentView: 'grid',
+  renderGeneration: 0,
 
   init(games) {
     this.games = Array.isArray(games) ? games : [];
@@ -44,10 +45,25 @@ const Library = {
 
   render() {
     const grid = document.getElementById('gameGrid');
+    const generation = ++this.renderGeneration;
+    const games = [...this.filteredGames];
+    let cursor = 0;
     grid.replaceChildren();
     grid.classList.toggle('list-view', this.currentView === 'list');
-    this.filteredGames.forEach((game, index) => grid.appendChild(GameCard.create(game, { index })));
     document.getElementById('statsCount').textContent = `${this.games.length} jogo${this.games.length === 1 ? '' : 's'}`;
+
+    const appendBatch = () => {
+      if (generation !== this.renderGeneration) return;
+      const fragment = document.createDocumentFragment();
+      const end = Math.min(cursor + 18, games.length);
+      while (cursor < end) {
+        fragment.appendChild(GameCard.create(games[cursor], { index: cursor }));
+        cursor += 1;
+      }
+      grid.appendChild(fragment);
+      if (cursor < games.length) requestAnimationFrame(appendBatch);
+    };
+    appendBatch();
   },
 
   renderRecentlyAdded(games) {

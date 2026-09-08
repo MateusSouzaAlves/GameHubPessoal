@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { Worker, isMainThread } = require('worker_threads');
 const { normalizeTitle, titleSimilarity } = require('./utils');
 
 const PENALTIES = [
@@ -16,6 +17,7 @@ class GameScanner {
     this.config = configManager;
     this.persistence = persistence;
     this.activeScan = null;
+    this.scanWorker = null;
     this.progressListeners = new Set();
   }
 
@@ -23,7 +25,8 @@ class GameScanner {
     const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
     if (onProgress) this.progressListeners.add(onProgress);
     if (!this.activeScan) {
-      this.activeScan = this.runFullScan().finally(() => { this.activeScan = null; });
+      const scan = isMainThread && options.useWorker !== false ? this.runFullScanInWorker() : this.runFullScan();
+      this.activeScan = scan.finally(() => { this.activeScan = null; });
     }
     try {
       return await this.activeScan;
@@ -36,6 +39,58 @@ class GameScanner {
     for (const listener of this.progressListeners) {
       try { listener(progress); } catch {}
     }
+  }
+
+  runFullScanInWorker() {
+    const configuredRoots = this.config.get('scanPaths') || [];
+    const availableRoots = configuredRoots.filter(root => fs.existsSync(root));
+    const config = typeof this.config.getAll === 'function'
+      ? this.config.getAll()
+      : {
+          scanPaths: configuredRoots,
+          scanDepth: this.config.get('scanDepth'),
+          excludedFolders: this.config.get('excludedFolders'),
+          excludedExecutables: this.config.get('excludedExecutables'),
+          utilityPatterns: this.config.get('utilityPatterns')
+        };
+
+    return new Promise((resolve, reject) => {
+      const worker = new Worker(path.join(__dirname, 'scannerWorker.js'), { workerData: { config } });
+      this.scanWorker = worker;
+      let settled = false;
+      const finish = (error, games = null) => {
+        if (settled) return;
+        settled = true;
+        if (this.scanWorker === worker) this.scanWorker = null;
+        worker.removeAllListeners();
+        worker.terminate().catch(() => {});
+        if (error) {
+          reject(error);
+          return;
+        }
+        try {
+          resolve(this.persistence.synchronizeScan(games || [], configuredRoots, availableRoots));
+        } catch (persistenceError) {
+          reject(persistenceError);
+        }
+      };
+
+      worker.on('message', message => {
+        if (message?.type === 'progress') this.reportProgress({ ...message.progress, backgroundWorker: true });
+        if (message?.type === 'result') finish(null, message.games);
+        if (message?.type === 'error') finish(new Error(message.message || 'A thread de varredura falhou.'));
+      });
+      worker.once('error', error => finish(error));
+      worker.once('exit', code => {
+        if (!settled) finish(new Error(`A thread de varredura terminou inesperadamente (${code}).`));
+      });
+    });
+  }
+
+  dispose() {
+    const worker = this.scanWorker;
+    this.scanWorker = null;
+    if (worker) worker.terminate().catch(() => {});
   }
 
   async runFullScan() {
@@ -52,7 +107,7 @@ class GameScanner {
     const discovered = [];
     let cursor = 0;
     let completed = 0;
-    const concurrency = Math.min(4, folders.length);
+    const concurrency = Math.min(isMainThread ? 4 : 2, folders.length);
     this.reportProgress({ phase: 'scanning', current: 0, total: folders.length, message: this.progressMessage(0, folders.length) });
     const workers = Array.from({ length: concurrency }, async () => {
       while (cursor < folders.length) {
