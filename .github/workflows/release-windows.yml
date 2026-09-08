@@ -1,4 +1,4 @@
-name: Publicar Windows assinado
+name: Publicar Windows
 
 on:
   push:
@@ -36,14 +36,15 @@ jobs:
           npm run check
           npm test
 
-      - name: Preparar OAuth público do aplicativo
+      - name: Preparar OAuth público do aplicativo, se configurado
         shell: pwsh
         env:
           NEXUS_GOOGLE_CLIENT_ID: ${{ secrets.NEXUS_GOOGLE_CLIENT_ID }}
           NEXUS_GOOGLE_CLIENT_SECRET: ${{ secrets.NEXUS_GOOGLE_CLIENT_SECRET }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:NEXUS_GOOGLE_CLIENT_ID)) {
-            throw 'Configure o secret NEXUS_GOOGLE_CLIENT_ID antes de publicar.'
+            Write-Warning 'Cliente OAuth não configurado; o login no Google ficará indisponível neste pacote.'
+            exit 0
           }
           $oauth = @{
             installed = @{
@@ -56,16 +57,18 @@ jobs:
           }
           $oauth | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath 'assets/google-oauth-client.json' -Encoding utf8
 
-      - name: Gerar e validar executáveis assinados
+      - name: Gerar executáveis
         shell: pwsh
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:WIN_CSC_LINK)) {
-            throw 'Configure o secret WIN_CSC_LINK com o certificado de assinatura antes de publicar.'
+            Write-Warning 'Certificado não configurado; esta release será publicada sem assinatura Authenticode.'
+            npm run build
+          } else {
+            npm run build:signed
           }
-          npm run build:release
 
       - name: Publicar instalador e versão portátil
         shell: pwsh
