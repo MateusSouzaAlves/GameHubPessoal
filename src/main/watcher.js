@@ -107,18 +107,19 @@ class FolderWatcher {
       this.debounceTimers.delete(key);
 
       try {
+        let changed = false;
         if (action === 'added' || action === 'changed') {
           const game = await this.scanner.scanSingleFolder(changedPath);
           if (game) {
             console.log(`[Watcher] Game refreshed: ${game.name}`);
+            changed = true;
           }
         } else if (action === 'removed') {
-          this.scanner.removeGameByPath(changedPath);
-          console.log(`[Watcher] Game removed from library`);
+          changed = this.scanner.removeGameByPath(changedPath);
+          if (changed) console.log('[Watcher] Game removed from library');
         }
 
-        // Notify the renderer
-        if (this.onUpdate) {
+        if (changed && this.onUpdate) {
           this.onUpdate();
         }
       } catch (err) {

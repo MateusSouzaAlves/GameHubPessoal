@@ -31,8 +31,8 @@ O instalador é a opção recomendada para a maioria das pessoas. Ele já conté
 **Não é necessário instalar Node.js, npm, Git ou usar o terminal.**
 
 1. Clique em **Baixar para Windows** acima.
-2. Na versão mais recente, abra a área **Assets** e baixe `Nexus-Game-Launcher-Setup-1.1.2.exe`.
-3. Abra o arquivo baixado e aguarde a instalação automática.
+2. Na versão mais recente, abra a área **Assets** e baixe `Nexus-Game-Launcher-Setup-1.1.3.exe`.
+3. Abra o arquivo, avance no assistente e escolha a pasta em que deseja instalar o Nexus.
 4. Ao terminar, abra o **Nexus Game Launcher** pelo menu Iniciar ou pelo atalho criado no Windows.
 
 > A versão pública atual não possui assinatura comercial e pode exibir o Microsoft Defender SmartScreen. Confira se o arquivo veio deste repositório antes de escolher **Mais informações → Executar assim mesmo**.
@@ -48,7 +48,7 @@ O instalador é a opção recomendada para a maioria das pessoas. Ele já conté
 
 ## Versão portátil
 
-Quem não quiser instalar pode baixar `Nexus-Game-Launcher-Portable-1.1.2.exe` na mesma página de Releases. A versão portátil abre diretamente e oferece os mesmos recursos principais.
+Quem não quiser instalar pode baixar `Nexus-Game-Launcher-Portable-1.1.3.exe` na mesma página de Releases. A versão portátil abre diretamente e oferece os mesmos recursos principais.
 
 Ela ainda cria uma pasta privada de dados do usuário no Windows. “Portátil” significa que o aplicativo não passa pelo instalador; não significa que saves, capas e preferências serão gravados ao lado do executável.
 
@@ -74,7 +74,7 @@ Para um jogo com saves em um local incomum, abra os detalhes do jogo e use **Adi
 ## Recursos incluídos
 
 - Descoberta de jogos em uma thread de fundo, com progresso e sem bloquear a interface.
-- Identificação de App ID da Steam e capas locais ou obtidas pela Steam.
+- Identificação tolerante de jogos e capas locais ou obtidas pela Steam, inclusive para nomes de pasta com pequenos erros.
 - Detecção de saves em pastas do jogo, Documents/My Games, Saved Games, AppData e Steam userdata.
 - Backups ZIP incrementais ao fechar um jogo e em intervalos configuráveis.
 - Histórico de versões com restauração segura.
@@ -142,8 +142,8 @@ npm run build
 
 O build de desenvolvimento cria em `dist/`:
 
-- `Nexus-Game-Launcher-Setup-1.1.2.exe` — instalador recomendado;
-- `Nexus-Game-Launcher-Portable-1.1.2.exe` — versão portátil.
+- `Nexus-Game-Launcher-Setup-1.1.3.exe` — instalador recomendado com escolha da pasta de destino;
+- `Nexus-Game-Launcher-Portable-1.1.3.exe` — versão portátil.
 
 `npm run build:release` executa as verificações e gera os pacotes públicos. Quando houver um certificado Authenticode, use `npm run build:signed` para exigir e validar a assinatura.
 
@@ -152,7 +152,7 @@ O build de desenvolvimento cria em `dist/`:
 O botão no início deste README aponta para a versão mais recente em **GitHub Releases**. Para disponibilizar uma nova versão ao público:
 
 1. Opcionalmente, cadastre `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` e `NEXUS_GOOGLE_CLIENT_ID` em **Settings → Secrets and variables → Actions**. Esses dados nunca entram no Git.
-2. Crie e envie uma tag que corresponda ao `package.json`, por exemplo `v1.1.2`.
+2. Crie e envie uma tag que corresponda ao `package.json`, por exemplo `v1.1.3`.
 3. O fluxo **Publicar Windows** executa testes e publica os dois `.exe`. Sem certificado, os arquivos são publicados sem assinatura e podem acionar o SmartScreen; com certificado, todas as assinaturas são validadas antes da publicação.
 
 Tokens e dados da conta Google de cada usuário continuam criptografados exclusivamente na máquina desse usuário.

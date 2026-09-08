@@ -11,7 +11,7 @@ const GameScanner = require('../src/main/scanner');
 const SaveManager = require('../src/main/saveManager');
 const GoogleDriveService = require('../src/main/googleDrive');
 const { titleSimilarity, isSubPath } = require('../src/main/utils');
-const { readImageDimensions } = require('../src/main/coverManager');
+const { readImageDimensions, resolveKnownSteamAppId } = require('../src/main/coverManager');
 
 function workspace(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-test-'));
@@ -121,6 +121,12 @@ test('Google OAuth pertence ao aplicativo e os tokens ficam criptografados', t =
   const encrypted = fs.readFileSync(path.join(directory, 'private', 'google-drive.enc'), 'utf8');
   assert.equal(encrypted.includes('token-value'), false);
   assert.equal(encrypted.includes('public-client-id'), false);
+});
+
+test('capas conhecidas toleram pequenos erros no nome do jogo', () => {
+  assert.equal(resolveKnownSteamAppId('Crimson Desert'), '3321460');
+  assert.equal(resolveKnownSteamAppId('crmison moon'), '4317690');
+  assert.equal(resolveKnownSteamAppId('outro jogo qualquer'), null);
 });
 
 test('Google OAuth conclui o retorno local sem deixar o socket aberto', async t => {

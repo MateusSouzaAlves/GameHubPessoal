@@ -2,6 +2,9 @@ const App = {
   isRefreshing: false,
   recentState: { added: false, played: false },
   selectedGameId: null,
+  pendingPreview: null,
+  previewFrame: null,
+  libraryReloadTimer: null,
 
   async init() {
     let shouldScanInBackground = false;
@@ -29,7 +32,7 @@ const App = {
       this.finishBoot();
     }
 
-    window.api.library.onUpdated(() => this.reloadLibrary({ quiet: true }));
+    window.api.library.onUpdated(() => this.scheduleLibraryReload());
     window.api.library.onScanProgress(progress => this.updateScanProgress(progress));
     window.api.library.onCoverChanged(game => this.updateGameCover(game));
     window.api.game.onStatusChanged(() => this.reloadLibrary({ quiet: true }));
@@ -48,6 +51,11 @@ const App = {
     document.getElementById('btnClose').addEventListener('click', () => window.api.window.close());
     document.getElementById('btnRefresh').addEventListener('click', () => this.refreshLibrary());
     document.getElementById('btnXOutput').addEventListener('click', () => this.launchXOutput());
+    document.getElementById('btnHeroPlay').addEventListener('click', () => {
+      const game = Library.find(this.selectedGameId);
+      if (game) this.launchGame(game.id, game.name);
+    });
+    document.getElementById('btnHeroDetails').addEventListener('click', () => this.openGameDetails(this.selectedGameId));
     document.querySelectorAll('.sort-btn').forEach(button => button.addEventListener('click', () => { Library.sort(button.dataset.sort); AudioUI.move(); }));
     document.getElementById('viewGrid').addEventListener('click', () => Library.setView('grid'));
     document.getElementById('viewList').addEventListener('click', () => Library.setView('list'));
@@ -113,11 +121,20 @@ const App = {
     try {
       const games = await window.api.library.getAll();
       this.renderLibrary(games, true);
-      if (games.length) await this.loadRecentSections();
-      await this.loadDashboard();
+      this.runWhenIdle(() => Promise.allSettled([
+        this.loadDashboard(),
+        games.length ? this.loadRecentSections() : Promise.resolve()
+      ]));
     } catch (error) {
       if (!quiet) Helpers.toast(`Falha ao atualizar a biblioteca: ${error.message}`, 'error');
     } finally { this.isRefreshing = false; }
+  },
+
+  scheduleLibraryReload() {
+    clearTimeout(this.libraryReloadTimer);
+    this.libraryReloadTimer = setTimeout(() => {
+      this.runWhenIdle(() => this.reloadLibrary({ quiet: true }), 800);
+    }, 220);
   },
 
   renderLibrary(games, update = false) {
@@ -151,8 +168,10 @@ const App = {
     try {
       const games = await window.api.library.scan();
       this.renderLibrary(games, true);
-      if (games.length) await this.loadRecentSections();
-      await this.loadDashboard();
+      this.runWhenIdle(() => Promise.allSettled([
+        this.loadDashboard(),
+        games.length ? this.loadRecentSections() : Promise.resolve()
+      ]));
       if (!quiet) Helpers.toast(`${games.length} jogo${games.length === 1 ? '' : 's'} encontrado${games.length === 1 ? '' : 's'}.`, 'success');
     } catch (error) {
       Helpers.toast(`Falha na varredura: ${error.message}`, 'error');
@@ -208,7 +227,9 @@ const App = {
       image.src = game.coverUrl;
     });
     if (this.selectedGameId === game.id) {
-      document.getElementById('consoleHero').style.setProperty('--hero-cover', `url("${String(game.coverUrl).replace(/"/g, '%22')}")`);
+      const heroCover = document.getElementById('heroCover');
+      heroCover.removeAttribute('data-fallback');
+      heroCover.src = game.coverUrl;
       const detailCover = document.getElementById('gameModalCover');
       if (!document.getElementById('gameModal').hidden) detailCover.src = game.coverUrl;
     }
@@ -246,7 +267,32 @@ const App = {
     const total = game.analytics?.totalPlaySeconds || 0;
     const saves = game.saveInfo?.locations?.length || 0;
     document.getElementById('heroSubtitle').textContent = `${game.playCount || 0} inicializações · ${Helpers.formatDuration(total)} registradas · ${saves ? `${saves} local(is) de save protegido(s)` : 'saves ainda não detectados'}`;
-    document.getElementById('consoleHero').style.setProperty('--hero-cover', `url("${String(game.coverUrl).replace(/"/g, '%22')}")`);
+    const heroCover = document.getElementById('heroCover');
+    if (heroCover.getAttribute('src') !== game.coverUrl) {
+      heroCover.removeAttribute('data-fallback');
+      heroCover.src = game.coverUrl;
+      heroCover.alt = `Capa de ${game.name}`;
+      heroCover.onerror = () => {
+        if (heroCover.dataset.fallback) return;
+        heroCover.dataset.fallback = 'true';
+        heroCover.src = Helpers.fallbackCover(game.name);
+      };
+    }
+    const unavailable = ['broken', 'offline'].includes(game.status);
+    const playButton = document.getElementById('btnHeroPlay');
+    playButton.disabled = unavailable;
+    playButton.textContent = game.isRunning ? 'Em execução' : unavailable ? 'Indisponível' : 'Jogar agora';
+  },
+
+  queuePreview(game) {
+    this.pendingPreview = game;
+    if (this.previewFrame !== null) return;
+    this.previewFrame = requestAnimationFrame(() => {
+      this.previewFrame = null;
+      const nextGame = this.pendingPreview;
+      this.pendingPreview = null;
+      if (nextGame) this.previewGame(nextGame);
+    });
   },
 
   async launchGame(gameId, gameName) {

@@ -24,6 +24,7 @@ let watcher = null;
 let cloudTimer = null;
 let resizeTimer = null;
 let watcherStartTimer = null;
+let appIsQuitting = false;
 let dataDir = null;
 let configManager = null;
 let persistence = null;
@@ -222,6 +223,7 @@ function publicGames(games, options = {}) {
 }
 
 function queueMissingCovers(games, options = {}) {
+  if (appIsQuitting) return;
   const now = Date.now();
   for (const game of games) {
     if (queuedCoverIds.has(game.id)) continue;
@@ -234,7 +236,8 @@ function queueMissingCovers(games, options = {}) {
 }
 
 function runCoverQueue() {
-  while (activeCoverWorkers < 2 && coverQueue.length) {
+  if (appIsQuitting) return;
+  while (activeCoverWorkers < 1 && coverQueue.length) {
     const game = coverQueue.shift();
     activeCoverWorkers += 1;
     coverAttemptedAt.set(game.id, Date.now());
@@ -243,11 +246,11 @@ function runCoverQueue() {
       const updated = persistence.updateCover(game.id, coverPath);
       if (updated) sendToRenderer('library:coverChanged', serializeGame(updated));
     }).catch(error => {
-      console.warn(`[CoverManager] Background cover lookup failed for ${game.name}:`, error.message);
+      if (!appIsQuitting) console.warn(`[CoverManager] Background cover lookup failed for ${game.name}:`, error.message);
     }).finally(() => {
       queuedCoverIds.delete(game.id);
       activeCoverWorkers -= 1;
-      runCoverQueue();
+      if (!appIsQuitting) runCoverQueue();
     });
   }
 }
@@ -446,8 +449,12 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  appIsQuitting = true;
+  coverQueue.length = 0;
+  queuedCoverIds.clear();
   saveManager?.stop();
   scanner?.dispose();
+  coverManager?.dispose();
   googleDrive?.dispose();
   if (cloudTimer) clearInterval(cloudTimer);
   if (watcherStartTimer) clearTimeout(watcherStartTimer);

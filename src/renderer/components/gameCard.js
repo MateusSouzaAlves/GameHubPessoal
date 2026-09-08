@@ -56,8 +56,8 @@ const GameCard = {
       }
       App.launchGame(game.id, game.name);
     });
-    card.addEventListener('focus', () => App.previewGame(game));
-    card.addEventListener('pointerenter', () => App.previewGame(game));
+    card.addEventListener('focus', () => App.queuePreview(game));
+    card.addEventListener('pointerenter', () => App.queuePreview(game));
     card.addEventListener('contextmenu', event => {
       event.preventDefault();
       this.showContextMenu(event, game);

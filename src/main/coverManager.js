@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { Worker, isMainThread } = require('worker_threads');
 const { titleSimilarity } = require('./utils');
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif']);
@@ -7,6 +8,17 @@ const COVER_WORDS = ['cover', 'poster', 'keyart', 'boxart', 'capsule', 'library_
 const ART_WORDS = ['header', 'hero', 'background', 'banner', 'artwork', 'splash', 'logo', 'icon'];
 const BAD_WORDS = ['normal', 'roughness', 'metallic', 'specular', 'mask', 'sprite', 'atlas', 'font', 'cursor', 'button', 'loading'];
 const SEARCH_DIRS = ['.', 'images', 'art', 'artwork', 'media', 'resources', 'assets', 'launcher', 'launcherData/images', 'Content/Splash'];
+const KNOWN_STEAM_GAMES = [
+  { name: 'Crimson Desert', appId: '3321460' },
+  { name: 'Crimson Moon', appId: '4317690' }
+];
+
+function resolveKnownSteamAppId(gameName) {
+  const match = KNOWN_STEAM_GAMES
+    .map(game => ({ ...game, similarity: titleSimilarity(gameName, game.name) }))
+    .sort((left, right) => right.similarity - left.similarity)[0];
+  return match?.similarity >= 0.68 ? match.appId : null;
+}
 
 function readImageDimensions(buffer) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 24) return null;
@@ -50,12 +62,25 @@ function readImageDimensions(buffer) {
 }
 
 class CoverManager {
-  constructor(dataDir) {
+  constructor(dataDir, options = {}) {
+    this.dataDir = dataDir;
     this.cacheDir = path.join(dataDir, 'covers');
+    this.useWorker = options.useWorker !== false;
+    this.worker = null;
+    this.workerSequence = 0;
+    this.workerPending = new Map();
+    this.disposing = false;
     fs.mkdirSync(this.cacheDir, { recursive: true });
   }
 
   async findCover(game) {
+    const cached = this.getCachedCover(game.id);
+    if (cached) return cached;
+    if (isMainThread && this.useWorker) return this.findCoverInWorker(game);
+    return this.findCoverDirect(game);
+  }
+
+  async findCoverDirect(game) {
     const cached = this.getCachedCover(game.id);
     if (cached) return cached;
 
@@ -64,12 +89,70 @@ class CoverManager {
       if (steamCover) return steamCover;
     }
 
+    const knownAppId = resolveKnownSteamAppId(game.name);
+    if (knownAppId && knownAppId !== String(game.steamAppId || '')) {
+      const knownCover = await this.fetchSteamCover(game, knownAppId);
+      if (knownCover) return knownCover;
+    }
+
     const localCover = await this.searchGameFolder(game.gamePath);
     if (localCover) return this.cacheCover(game.id, localCover.path);
 
-    const appId = await this.searchSteamAppId(game.name);
-    if (appId) return this.fetchSteamCover(game, appId);
+    const steamGame = await this.searchSteamGame(game.name);
+    if (steamGame) return this.fetchSteamCover(game, steamGame.id, [steamGame.tinyImage]);
     return null;
+  }
+
+  findCoverInWorker(game) {
+    const requestId = ++this.workerSequence;
+    const worker = this.getWorker();
+    return new Promise((resolve, reject) => {
+      this.workerPending.set(requestId, { resolve, reject });
+      worker.postMessage({
+        requestId,
+        game: {
+          id: game.id,
+          name: game.name,
+          gamePath: game.gamePath,
+          steamAppId: game.steamAppId || null
+        }
+      });
+    });
+  }
+
+  getWorker() {
+    if (this.worker) return this.worker;
+    this.disposing = false;
+    const worker = new Worker(path.join(__dirname, 'coverWorker.js'), { workerData: { dataDir: this.dataDir } });
+    this.worker = worker;
+    worker.on('message', message => {
+      const pending = this.workerPending.get(message?.requestId);
+      if (!pending) return;
+      this.workerPending.delete(message.requestId);
+      if (message.error) pending.reject(new Error(message.error));
+      else pending.resolve(message.coverPath || null);
+    });
+    worker.once('error', error => this.failWorker(error));
+    worker.once('exit', code => {
+      if (!this.disposing && code !== 0) this.failWorker(new Error(`A thread de capas terminou inesperadamente (${code}).`));
+      if (this.worker === worker) this.worker = null;
+    });
+    worker.unref?.();
+    return worker;
+  }
+
+  failWorker(error) {
+    for (const pending of this.workerPending.values()) pending.reject(error);
+    this.workerPending.clear();
+    this.worker = null;
+  }
+
+  dispose() {
+    this.disposing = true;
+    const worker = this.worker;
+    this.worker = null;
+    this.failWorker(new Error('O aplicativo foi encerrado antes de concluir a busca da capa.'));
+    worker?.terminate().catch(() => {});
   }
 
   getCoverKey(gameId) {
@@ -78,6 +161,12 @@ class CoverManager {
   }
 
   async searchSteamAppId(gameName) {
+    return (await this.searchSteamGame(gameName))?.id || null;
+  }
+
+  async searchSteamGame(gameName) {
+    const knownAppId = resolveKnownSteamAppId(gameName);
+    if (knownAppId) return { id: knownAppId, name: gameName, tinyImage: null };
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 7000);
     try {
@@ -85,9 +174,14 @@ class CoverManager {
       const response = await fetch(url, { signal: controller.signal, headers: { Accept: 'application/json' } });
       if (!response.ok) return null;
       const data = await response.json();
-      const ranked = (data.items || []).map(item => ({ item, similarity: titleSimilarity(gameName, item.name) }))
+      const ranked = (data.items || []).map(item => {
+        const addOnPenalty = /\b(soundtrack|upgrade|pack|dlc)\b/i.test(item.name) ? 0.2 : 0;
+        return { item, similarity: titleSimilarity(gameName, item.name) - addOnPenalty };
+      })
         .sort((left, right) => right.similarity - left.similarity);
-      return ranked[0]?.similarity >= 0.72 ? String(ranked[0].item.id) : null;
+      return ranked[0]?.similarity >= 0.7
+        ? { id: String(ranked[0].item.id), name: ranked[0].item.name, tinyImage: ranked[0].item.tiny_image || null }
+        : null;
     } catch (error) {
       if (error.name !== 'AbortError') console.warn(`[CoverManager] Steam search failed for ${gameName}:`, error.message);
       return null;
@@ -96,34 +190,76 @@ class CoverManager {
     }
   }
 
-  async fetchSteamCover(game, appId) {
-    const candidates = [
+  async fetchSteamCover(game, appId, fallbackUrls = []) {
+    const portraitCandidates = [
       `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_600x900_2x.jpg`,
-      `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_600x900.jpg`,
+      `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_600x900.jpg`
+    ];
+    for (const url of portraitCandidates) {
+      const cover = await this.downloadCover(game, url);
+      if (cover) return cover;
+    }
+
+    const metadataUrls = await this.fetchSteamAssetUrls(appId);
+    const candidates = [
+      ...metadataUrls,
+      ...fallbackUrls,
       `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_hero.jpg`,
       `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/header.jpg`
-    ];
+    ].filter((url, index, urls) => url && urls.indexOf(url) === index);
     for (const url of candidates) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 8000);
-      try {
-        const response = await fetch(url, { signal: controller.signal });
-        const contentType = response.headers.get('content-type') || '';
-        if (!response.ok || !contentType.startsWith('image/')) continue;
-        const buffer = Buffer.from(await response.arrayBuffer());
-        if (buffer.length < 10_000 || buffer.length > 20 * 1024 * 1024) continue;
-        const dimensions = readImageDimensions(buffer);
-        if (!dimensions) continue;
-        if (!dimensions.width || !dimensions.height || dimensions.width < 300 || dimensions.height < 150) continue;
-        const extension = contentType.includes('png') ? '.png' : '.jpg';
-        const destination = path.join(this.cacheDir, `${game.id}${extension}`);
-        fs.writeFileSync(destination, buffer);
-        return destination;
-      } catch (error) {
-        if (error.name !== 'AbortError') console.warn(`[CoverManager] Cover download failed: ${error.message}`);
-      } finally {
-        clearTimeout(timer);
-      }
+      const cover = await this.downloadCover(game, url);
+      if (cover) return cover;
+    }
+    return null;
+  }
+
+  async fetchSteamAssetUrls(appId) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 7000);
+    try {
+      const response = await fetch(`https://store.steampowered.com/api/appdetails?appids=${encodeURIComponent(appId)}&l=english&cc=US`, {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' }
+      });
+      if (!response.ok) return [];
+      const payload = await response.json();
+      const details = payload?.[appId]?.data;
+      if (!details) return [];
+      return [
+        details.header_image,
+        details.background_raw,
+        details.screenshots?.[0]?.path_full,
+        details.capsule_image
+      ].filter(Boolean);
+    } catch (error) {
+      if (error.name !== 'AbortError') console.warn(`[CoverManager] Steam metadata failed for ${appId}:`, error.message);
+      return [];
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async downloadCover(game, url) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      const contentType = response.headers.get('content-type') || '';
+      if (!response.ok || !contentType.startsWith('image/')) return null;
+      const buffer = Buffer.from(await response.arrayBuffer());
+      if (buffer.length < 10_000 || buffer.length > 20 * 1024 * 1024) return null;
+      const dimensions = readImageDimensions(buffer);
+      if (!dimensions) return null;
+      if (!dimensions.width || !dimensions.height || dimensions.width < 300 || dimensions.height < 150) return null;
+      const extension = contentType.includes('png') ? '.png' : '.jpg';
+      const destination = path.join(this.cacheDir, `${game.id}${extension}`);
+      await fs.promises.writeFile(destination, buffer);
+      return destination;
+    } catch (error) {
+      if (error.name !== 'AbortError') console.warn(`[CoverManager] Cover download failed: ${error.message}`);
+    } finally {
+      clearTimeout(timer);
     }
     return null;
   }
@@ -223,3 +359,4 @@ class CoverManager {
 
 module.exports = CoverManager;
 module.exports.readImageDimensions = readImageDimensions;
+module.exports.resolveKnownSteamAppId = resolveKnownSteamAppId;

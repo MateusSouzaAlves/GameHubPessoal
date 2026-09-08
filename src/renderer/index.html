@@ -6,6 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: nexus-cover:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Nexus — Game Launcher</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="theme.css">
 </head>
 <body class="booting">
   <div class="ambient-background" aria-hidden="true">
@@ -71,10 +72,19 @@
       <progress id="scanProgressBar" max="1"></progress>
     </div>
     <section id="consoleHero" class="console-hero" aria-live="polite">
-      <div class="hero-copy">
-        <span class="hero-eyebrow" id="heroEyebrow">SUA BIBLIOTECA</span>
-        <h1 id="heroTitle">Tudo pronto para jogar</h1>
-        <p id="heroSubtitle">Escolha um título e continue de onde parou.</p>
+      <div class="hero-game">
+        <div class="hero-cover-shell">
+          <img id="heroCover" class="hero-cover" src="../../assets/icons/nexus.png" alt="Nexus">
+        </div>
+        <div class="hero-copy">
+          <span class="hero-eyebrow" id="heroEyebrow">SUA BIBLIOTECA</span>
+          <h1 id="heroTitle">Tudo pronto para jogar</h1>
+          <p id="heroSubtitle">Escolha um título e continue de onde parou.</p>
+          <div class="hero-actions">
+            <button class="btn-primary hero-play" id="btnHeroPlay" data-gamepad>Jogar agora</button>
+            <button class="btn-secondary" id="btnHeroDetails" data-gamepad>Detalhes e saves</button>
+          </div>
+        </div>
       </div>
       <div class="hero-stats" aria-label="Resumo da biblioteca">
         <button class="hero-stat" id="statGames" data-gamepad><strong id="summaryGames">0</strong><span>jogos</span></button>

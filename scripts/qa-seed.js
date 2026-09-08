@@ -12,7 +12,7 @@ const dataDir = path.join(userData, 'data');
 const coversDir = path.join(dataDir, 'covers');
 fs.mkdirSync(coversDir, { recursive: true });
 
-const games = ['Celestial Drift', 'Echoes of Aether', 'Neon Horizon'];
+const games = ['Crimson Desert', 'crmison moon', 'Celestial Drift', 'Echoes of Aether', 'Neon Horizon'];
 const availableCovers = fs.existsSync(path.join(root, 'data', 'covers'))
   ? fs.readdirSync(path.join(root, 'data', 'covers')).filter(name => /\.(png|jpe?g)$/i.test(name))
   : [];
