@@ -1326,7 +1326,7 @@ button:focus-visible, input:focus-visible {
   justify-items: center;
   gap: 22px;
   background: radial-gradient(circle at center, #102649 0%, #050914 44%, #020308 100%);
-  transition: opacity .65s ease, transform .65s cubic-bezier(.2,.8,.2,1);
+  transition: opacity .22s ease, transform .22s cubic-bezier(.2,.8,.2,1);
 }
 .boot-experience.boot-exit { opacity: 0; transform: scale(1.08); pointer-events: none; }
 .boot-symbol, .loading-symbol { display: flex; gap: 8px; align-items: end; height: 56px; }

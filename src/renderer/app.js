@@ -15,12 +15,13 @@ const App = {
       const config = await window.api.config.get();
       this.applyExperienceSettings(config);
       shouldScanInBackground = Boolean(config.scanPaths?.length);
-      await this.loadLibrary();
-      await this.loadDashboard();
       this.finishBoot();
+      await this.waitForFirstPaint();
+      await this.loadLibrary();
       const qaView = new URLSearchParams(location.search).get('qa');
       if (qaView === 'settings') await Settings.open();
       if (qaView === 'game' && Library.games[0]) await this.openGameDetails(Library.games[0].id);
+      this.scheduleSecondaryContent();
     } catch (error) {
       console.error('[App] Initialization failed:', error);
       EmptyState.show();
@@ -72,11 +73,28 @@ const App = {
   },
 
   finishBoot() {
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       document.getElementById('bootExperience').classList.add('boot-exit');
       document.body.classList.remove('booting');
-      setTimeout(() => { document.getElementById('bootExperience').hidden = true; }, 700);
-    }, document.body.classList.contains('reduce-motion') ? 100 : 850);
+      setTimeout(() => { document.getElementById('bootExperience').hidden = true; }, 260);
+    });
+  },
+
+  waitForFirstPaint() {
+    return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  },
+
+  runWhenIdle(task, timeout = 1200) {
+    if ('requestIdleCallback' in window) window.requestIdleCallback(() => task(), { timeout });
+    else setTimeout(task, 0);
+  },
+
+  scheduleSecondaryContent() {
+    setTimeout(() => this.runWhenIdle(async () => {
+      const tasks = [this.loadDashboard()];
+      if (Library.games.length) tasks.push(this.loadRecentSections());
+      await Promise.allSettled(tasks);
+    }), 120);
   },
 
   applyExperienceSettings(config) {
@@ -87,7 +105,6 @@ const App = {
   async loadLibrary() {
     const games = await window.api.library.getAll();
     this.renderLibrary(games);
-    if (games.length) await this.loadRecentSections();
   },
 
   async reloadLibrary({ quiet = false } = {}) {
@@ -151,9 +168,8 @@ const App = {
   scheduleBackgroundScan() {
     setTimeout(() => {
       const start = () => this.refreshLibrary({ quiet: true });
-      if ('requestIdleCallback' in window) window.requestIdleCallback(start, { timeout: 1500 });
-      else setTimeout(start, 0);
-    }, document.body.classList.contains('reduce-motion') ? 250 : 1100);
+      this.runWhenIdle(start, 1800);
+    }, document.body.classList.contains('reduce-motion') ? 350 : 900);
   },
 
   updateScanProgress(progress = {}) {

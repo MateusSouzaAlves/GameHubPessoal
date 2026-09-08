@@ -1,0 +1,78 @@
+name: Publicar Windows assinado
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Conferir versão da tag
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          if ($env:GITHUB_REF_NAME -ne "v$version") {
+            throw "A tag $env:GITHUB_REF_NAME não corresponde ao package.json v$version."
+          }
+
+      - name: Instalar dependências e testar
+        shell: pwsh
+        run: |
+          npm ci
+          npm run check
+          npm test
+
+      - name: Preparar OAuth público do aplicativo
+        shell: pwsh
+        env:
+          NEXUS_GOOGLE_CLIENT_ID: ${{ secrets.NEXUS_GOOGLE_CLIENT_ID }}
+          NEXUS_GOOGLE_CLIENT_SECRET: ${{ secrets.NEXUS_GOOGLE_CLIENT_SECRET }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:NEXUS_GOOGLE_CLIENT_ID)) {
+            throw 'Configure o secret NEXUS_GOOGLE_CLIENT_ID antes de publicar.'
+          }
+          $oauth = @{
+            installed = @{
+              client_id = $env:NEXUS_GOOGLE_CLIENT_ID
+              client_secret = $env:NEXUS_GOOGLE_CLIENT_SECRET
+              auth_uri = 'https://accounts.google.com/o/oauth2/v2/auth'
+              token_uri = 'https://oauth2.googleapis.com/token'
+              redirect_uris = @('http://127.0.0.1')
+            }
+          }
+          $oauth | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath 'assets/google-oauth-client.json' -Encoding utf8
+
+      - name: Gerar e validar executáveis assinados
+        shell: pwsh
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WIN_CSC_LINK)) {
+            throw 'Configure o secret WIN_CSC_LINK com o certificado de assinatura antes de publicar.'
+          }
+          npm run build:release
+
+      - name: Publicar instalador e versão portátil
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = node -p "require('./package.json').version"
+          $setup = "dist/Nexus-Game-Launcher-Setup-$version.exe"
+          $portable = "dist/Nexus-Game-Launcher-Portable-$version.exe"
+          gh release create $env:GITHUB_REF_NAME $setup $portable --verify-tag --generate-notes --title "Nexus Game Launcher $version"

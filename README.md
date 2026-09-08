@@ -35,7 +35,7 @@ O instalador é a opção recomendada para a maioria das pessoas. Ele já conté
 3. Abra o arquivo baixado e aguarde a instalação automática.
 4. Ao terminar, abra o **Nexus Game Launcher** pelo menu Iniciar ou pelo atalho criado no Windows.
 
-> O Windows pode exibir o Microsoft Defender SmartScreen enquanto o projeto ainda não possuir um certificado comercial de assinatura. Confira se o arquivo veio deste repositório antes de escolher **Mais informações → Executar assim mesmo**.
+> A versão pública 1.1.1 ainda não possui assinatura comercial e pode exibir o Microsoft Defender SmartScreen. As próximas versões só serão publicadas quando a assinatura Authenticode for validada automaticamente.
 
 ### O que o instalador deixa pronto
 
@@ -140,19 +140,22 @@ npm test
 npm run build
 ```
 
-O build cria em `dist/`:
+O build de desenvolvimento cria em `dist/`:
 
-- `Nexus-Game-Launcher-Setup-1.1.1.exe` — instalador recomendado;
-- `Nexus-Game-Launcher-Portable-1.1.1.exe` — versão portátil.
+- `Nexus-Game-Launcher-Setup-1.1.2.exe` — instalador recomendado;
+- `Nexus-Game-Launcher-Portable-1.1.2.exe` — versão portátil.
+
+`npm run build` pode gerar um pacote local sem assinatura para testes. Uma versão pública deve usar `npm run build:release`, que exige um certificado válido e recusa executáveis sem Authenticode.
 
 ### Publicar o botão de download
 
 O botão no início deste README aponta para a versão mais recente em **GitHub Releases**. Para disponibilizar uma nova versão ao público:
 
-1. Execute os testes e `npm run build`.
-2. Crie uma nova Release no GitHub, por exemplo `v1.1.1`.
-3. Anexe os dois arquivos `.exe` gerados em `dist/`.
-4. Publique a Release como versão mais recente.
+1. Cadastre `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` e `NEXUS_GOOGLE_CLIENT_ID` em **Settings → Secrets and variables → Actions**. O certificado e os dados OAuth nunca entram no Git.
+2. Crie e envie uma tag que corresponda ao `package.json`, por exemplo `v1.1.2`.
+3. O fluxo **Publicar Windows assinado** executa testes, incorpora apenas o cliente OAuth público do aplicativo, valida todas as assinaturas e publica os dois `.exe`.
+
+O fluxo falha antes da publicação se o certificado ou o cliente OAuth não estiver configurado. Tokens e dados da conta Google de cada usuário continuam criptografados exclusivamente na máquina desse usuário.
 
 Assim, visitantes encontram o download oficial sem clonar o projeto ou executar comandos.
 

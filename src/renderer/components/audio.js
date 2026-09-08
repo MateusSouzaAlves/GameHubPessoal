@@ -22,7 +22,6 @@ const AudioUI = {
     window.addEventListener('pointerdown', unlock, { passive: true });
     window.addEventListener('keydown', unlock, { passive: true });
     window.addEventListener('gamepadconnected', unlock, { passive: true });
-    unlock();
   },
 
   tone(frequency, duration = 0.06, volume = 0.025, type = 'sine', delay = 0) {

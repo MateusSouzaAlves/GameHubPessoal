@@ -21,7 +21,13 @@ for (const filePath of projectFiles.filter(file => file.endsWith('.js'))) {
   if (result.status !== 0) failures.push(`${path.relative(root, filePath)}: ${result.stderr.trim()}`);
 }
 
-const bannedNames = [/client_secret.*\.json$/i, /credentials.*\.json$/i, /^\.env(?:\.|$)/i, /token.*\.json$/i];
+const bannedNames = [
+  /client_secret.*\.json$/i,
+  /credentials.*\.json$/i,
+  /^\.env(?:\.|$)/i,
+  /token.*\.json$/i,
+  /\.(?:pfx|p12|key)$/i
+];
 for (const filePath of projectFiles) {
   if (bannedNames.some(pattern => pattern.test(path.basename(filePath)))) failures.push(`Arquivo sensível presente: ${path.relative(root, filePath)}`);
 }

@@ -2,11 +2,14 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const archiver = require('archiver');
-const unzipper = require('unzipper');
 const { pipeline } = require('stream/promises');
 const { Transform } = require('stream');
 const { normalizeTitle, sanitizeFileName, isSubPath } = require('./utils');
+
+let archiverModule = null;
+let unzipperModule = null;
+const getArchiver = () => (archiverModule ||= require('archiver'));
+const getUnzipper = () => (unzipperModule ||= require('unzipper'));
 
 const SAVE_DIR_NAMES = new Set([
   'save', 'saves', 'saved', 'savegame', 'savegames', 'savedata', 'profiles',
@@ -274,7 +277,7 @@ class SaveManager {
   createArchive(destination, game, locations, metadata) {
     return new Promise((resolve, reject) => {
       const output = fs.createWriteStream(destination, { flags: 'wx' });
-      const archive = archiver('zip', { zlib: { level: 6 } });
+      const archive = getArchiver()('zip', { zlib: { level: 6 } });
       output.on('close', resolve);
       output.on('error', reject);
       archive.on('warning', error => error.code === 'ENOENT' ? console.warn('[Saves]', error.message) : reject(error));
@@ -342,7 +345,7 @@ class SaveManager {
     if (!backup || !fs.existsSync(backup.path) || !isSubPath(this.backupRoot, backup.path)) {
       throw new Error('Backup local não encontrado.');
     }
-    const archive = await unzipper.Open.file(backup.path);
+    const archive = await getUnzipper().Open.file(backup.path);
     const metadataEntry = archive.files.find(entry => entry.path === 'nexus-backup.json');
     if (!metadataEntry) throw new Error('Este arquivo não é um backup válido do Nexus.');
     if ((metadataEntry.vars?.uncompressedSize || 0) > 1024 * 1024) throw new Error('Metadados do backup excedem o limite permitido.');

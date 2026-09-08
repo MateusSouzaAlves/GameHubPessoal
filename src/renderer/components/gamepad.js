@@ -3,13 +3,13 @@ const GamepadNavigation = {
   previousButtons: [],
   axisState: { horizontal: 0, vertical: 0 },
   lastMoveAt: 0,
+  pollFrame: null,
 
   init() {
     window.addEventListener('gamepadconnected', event => this.connect(event.gamepad));
     window.addEventListener('gamepaddisconnected', event => this.disconnect(event.gamepad));
     const existing = [...(navigator.getGamepads?.() || [])].find(Boolean);
     if (existing) this.connect(existing);
-    requestAnimationFrame(() => this.poll());
   },
 
   connect(gamepad) {
@@ -20,6 +20,7 @@ const GamepadNavigation = {
     document.getElementById('controllerName').textContent = String(gamepad.id || 'Controle conectado').slice(0, 60);
     Helpers.toast('Controle conectado — navegação ativada', 'success', 2500);
     this.ensureFocus();
+    if (this.pollFrame === null) this.pollFrame = requestAnimationFrame(() => this.poll());
   },
 
   disconnect(gamepad) {
@@ -27,14 +28,18 @@ const GamepadNavigation = {
     this.gamepadIndex = null;
     document.body.classList.remove('gamepad-active');
     document.getElementById('controllerHints').hidden = true;
+    if (this.pollFrame !== null) cancelAnimationFrame(this.pollFrame);
+    this.pollFrame = null;
   },
 
   poll() {
+    this.pollFrame = null;
+    if (this.gamepadIndex === null) return;
     if (this.gamepadIndex !== null) {
       const gamepad = navigator.getGamepads?.()[this.gamepadIndex];
       if (gamepad) this.process(gamepad);
     }
-    requestAnimationFrame(() => this.poll());
+    this.pollFrame = requestAnimationFrame(() => this.poll());
   },
 
   process(gamepad) {

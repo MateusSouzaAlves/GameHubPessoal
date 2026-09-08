@@ -1,6 +1,6 @@
 {
   "name": "game-launcher-hub",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "A modern Game Launcher Hub with automatic game detection",
   "private": true,
   "main": "main.js",
@@ -10,6 +10,8 @@
     "test": "node --test",
     "check": "node scripts/check.js",
     "build": "electron-builder --win",
+    "build:release": "electron-builder --win -c.forceCodeSigning=true && npm run verify:signatures",
+    "verify:signatures": "pwsh -NoProfile -File scripts/verify-signatures.ps1",
     "pack": "electron-builder --dir"
   },
   "build": {

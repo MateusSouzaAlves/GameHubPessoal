@@ -100,11 +100,17 @@ function initializeServices() {
     persistence.markBackupCloudSynced(gameId, backup.id, { fileId: remote.id });
     sendToRenderer('cloud:statusChanged', googleDrive.getStatus());
   });
-  xoutput = new XOutputManager(dataDir, process.resourcesPath, __dirname, running => {
-    sendToRenderer('xoutput:statusChanged', { ...xoutput.getStatus(), running });
-  });
   saveManager.start();
   scheduleCloudSync();
+}
+
+function getXOutputManager() {
+  if (!xoutput) {
+    xoutput = new XOutputManager(dataDir, process.resourcesPath, __dirname, running => {
+      sendToRenderer('xoutput:statusChanged', { ...xoutput.getStatus(), running });
+    });
+  }
+  return xoutput;
 }
 
 function registerCoverProtocol() {
@@ -407,10 +413,10 @@ function registerIpcHandlers() {
     scheduleCloudSync();
     return status;
   });
-  ipcMain.handle('xoutput:launch', () => xoutput.launch());
-  ipcMain.handle('xoutput:status', () => xoutput.getStatus());
+  ipcMain.handle('xoutput:launch', () => getXOutputManager().launch());
+  ipcMain.handle('xoutput:status', () => getXOutputManager().getStatus());
   ipcMain.handle('xoutput:openFolder', async () => {
-    const error = await shell.openPath(xoutput.getFolder());
+    const error = await shell.openPath(getXOutputManager().getFolder());
     if (error) throw new Error(error);
     return true;
   });

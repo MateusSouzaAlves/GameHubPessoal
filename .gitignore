@@ -20,6 +20,9 @@ token*.json
 secrets*.json
 .env
 .env.*
+*.pfx
+*.p12
+*.key
 
 # Editor and operating-system files
 .DS_Store
