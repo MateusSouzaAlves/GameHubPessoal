@@ -36,6 +36,7 @@ class GameLauncher {
       const finish = (exitCode, error = null) => {
         if (!this.runningProcesses.has(gameId)) return;
         this.runningProcesses.delete(gameId);
+        if (error) this.persistence.recordFailedLaunch(gameId);
         const endedAt = new Date();
         this.persistence.recordSession(gameId, {
           startedAt: startedAt.toISOString(),

@@ -54,7 +54,7 @@ class SaveManager {
   async discoverForGame(gameId) {
     const game = this.persistence.getById(gameId);
     if (!game) throw new Error('Jogo não encontrado.');
-    const manual = (game.saveInfo?.locations || []).filter(location => location.manual && fs.existsSync(location.path));
+    const manual = (game.saveInfo?.locations || []).filter(location => location?.manual && typeof location.path === 'string' && fs.existsSync(location.path));
     const candidates = await this.buildCandidates(game);
     const detected = [];
     const seen = new Set(manual.map(location => path.resolve(location.path).toLowerCase()));
@@ -237,7 +237,7 @@ class SaveManager {
   async backupGame(gameId, options = {}) {
     const game = this.persistence.getById(gameId);
     if (!game) throw new Error('Jogo não encontrado.');
-    let locations = (game.saveInfo?.locations || []).filter(location => fs.existsSync(location.path));
+    let locations = (game.saveInfo?.locations || []).filter(location => location && typeof location.path === 'string' && fs.existsSync(location.path));
     if (!locations.length) locations = (await this.discoverForGame(gameId)).locations;
     if (!locations.length) return { success: false, skipped: true, message: 'Nenhuma pasta de saves foi detectada.' };
     const metadata = await this.fingerprint(locations);
@@ -255,7 +255,12 @@ class SaveManager {
     const gameBackupDir = path.join(this.backupRoot, game.id);
     fs.mkdirSync(gameBackupDir, { recursive: true });
     const destination = path.join(gameBackupDir, `${backupId}.zip`);
-    await this.createArchive(destination, game, locations, metadata);
+    try {
+      await this.createArchive(destination, game, locations, metadata);
+    } catch (error) {
+      await fs.promises.unlink(destination).catch(() => {});
+      throw error;
+    }
     const stats = await fs.promises.stat(destination);
     const backup = {
       id: backupId,
@@ -348,8 +353,9 @@ class SaveManager {
     const archive = await getUnzipper().Open.file(backup.path);
     const metadataEntry = archive.files.find(entry => entry.path === 'nexus-backup.json');
     if (!metadataEntry) throw new Error('Este arquivo não é um backup válido do Nexus.');
-    if ((metadataEntry.vars?.uncompressedSize || 0) > 1024 * 1024) throw new Error('Metadados do backup excedem o limite permitido.');
-    const metadata = JSON.parse((await metadataEntry.buffer()).toString('utf8'));
+    const metadataBuffer = await metadataEntry.buffer();
+    if (metadataBuffer.length > 1024 * 1024) throw new Error('Metadados do backup excedem o limite permitido.');
+    const metadata = JSON.parse(metadataBuffer.toString('utf8'));
     if (metadata.formatVersion !== 1 || metadata.game?.id !== gameId || !Array.isArray(metadata.locations)) {
       throw new Error('Os metadados do backup não correspondem a este jogo.');
     }

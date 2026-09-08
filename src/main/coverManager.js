@@ -255,6 +255,10 @@ class CoverManager {
       const extension = contentType.includes('png') ? '.png' : '.jpg';
       const destination = path.join(this.cacheDir, `${game.id}${extension}`);
       await fs.promises.writeFile(destination, buffer);
+      for (const otherExtension of IMAGE_EXTENSIONS) {
+        if (otherExtension === extension) continue;
+        try { await fs.promises.unlink(path.join(this.cacheDir, `${game.id}${otherExtension}`)); } catch {}
+      }
       return destination;
     } catch (error) {
       if (error.name !== 'AbortError') console.warn(`[CoverManager] Cover download failed: ${error.message}`);
@@ -327,7 +331,10 @@ class CoverManager {
   getCachedCover(gameId) {
     for (const extension of IMAGE_EXTENSIONS) {
       const filePath = path.join(this.cacheDir, `${gameId}${extension}`);
-      if (fs.existsSync(filePath)) return filePath;
+      try {
+        const stats = fs.statSync(filePath);
+        if (stats.isFile() && stats.size >= 10_000) return filePath;
+      } catch {}
     }
     return null;
   }

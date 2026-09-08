@@ -14,6 +14,18 @@ const GoogleDriveService = require('./src/main/googleDrive');
 const XOutputManager = require('./src/main/xoutputManager');
 const { isSubPath } = require('./src/main/utils');
 
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (hasSingleInstanceLock) {
+  app.on('second-instance', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+} else {
+  app.quit();
+}
+
 protocol.registerSchemesAsPrivileged([{
   scheme: 'nexus-cover',
   privileges: { standard: true, secure: true, supportFetchAPI: false, corsEnabled: false }
@@ -430,6 +442,7 @@ function registerIpcHandlers() {
 }
 
 app.whenReady().then(async () => {
+  if (!hasSingleInstanceLock) return;
   app.setAppUserModelId('com.nexus.gamelauncher');
   initializeServices();
   registerCoverProtocol();

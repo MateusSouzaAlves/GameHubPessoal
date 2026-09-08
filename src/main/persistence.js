@@ -4,11 +4,19 @@ const crypto = require('crypto');
 const { atomicWriteJson, isSubPath } = require('./utils');
 
 const clone = value => value == null ? value : JSON.parse(JSON.stringify(value));
+const createLibrary = () => Object.create(null);
+
+function isGameRecord(value) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    && typeof value.name === 'string' && value.name.trim()
+    && typeof value.gamePath === 'string' && value.gamePath.trim()
+    && typeof value.executablePath === 'string' && value.executablePath.trim();
+}
 
 class Persistence {
   constructor(dataDir) {
     this.dbPath = path.join(dataDir, 'library.json');
-    this.library = {};
+    this.library = createLibrary();
     this.load();
   }
 
@@ -16,10 +24,17 @@ class Persistence {
     try {
       if (!fs.existsSync(this.dbPath)) return;
       const parsed = JSON.parse(fs.readFileSync(this.dbPath, 'utf8'));
-      this.library = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      this.library = createLibrary();
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+      for (const [key, game] of Object.entries(parsed)) {
+        if (!isGameRecord(game)) continue;
+        const id = typeof game.id === 'string' && game.id.trim() ? game.id : key;
+        if (!/^[a-f0-9]{12,64}$/i.test(id)) continue;
+        this.library[id] = { ...game, id };
+      }
     } catch (error) {
       console.error('[Persistence] Failed to load library:', error.message);
-      this.library = {};
+      this.library = createLibrary();
     }
   }
 
@@ -34,7 +49,7 @@ class Persistence {
 
   getByPath(gamePath) {
     const target = path.resolve(gamePath).toLowerCase();
-    return clone(Object.values(this.library).find(game => path.resolve(game.gamePath).toLowerCase() === target) || null);
+    return clone(Object.values(this.library).find(game => typeof game.gamePath === 'string' && path.resolve(game.gamePath).toLowerCase() === target) || null);
   }
 
   buildGame(gameData, existing = null) {
@@ -71,7 +86,7 @@ class Persistence {
   synchronizeScan(discoveredGames, configuredRoots, availableRoots) {
     const discoveredIds = new Set();
     for (const game of discoveredGames) {
-      const existingByPath = Object.values(this.library).find(item => path.resolve(item.gamePath).toLowerCase() === path.resolve(game.gamePath).toLowerCase());
+      const existingByPath = Object.values(this.library).find(item => typeof item.gamePath === 'string' && path.resolve(item.gamePath).toLowerCase() === path.resolve(game.gamePath).toLowerCase());
       const id = game.id || existingByPath?.id || this.generateId(game.gamePath);
       discoveredIds.add(id);
       this.library[id] = this.buildGame({ ...game, id, status: 'ready' }, this.library[id]);
@@ -79,10 +94,10 @@ class Persistence {
 
     for (const [id, game] of Object.entries(this.library)) {
       if (discoveredIds.has(id)) continue;
-      const configuredRoot = configuredRoots.find(root => isSubPath(root, game.gamePath));
+      const configuredRoot = typeof game.gamePath === 'string' ? configuredRoots.find(root => isSubPath(root, game.gamePath)) : null;
       if (!configuredRoot) {
         delete this.library[id];
-      } else if (!availableRoots.some(root => isSubPath(root, game.gamePath))) {
+      } else if (typeof game.gamePath !== 'string' || !availableRoots.some(root => isSubPath(root, game.gamePath))) {
         game.status = 'offline';
       } else if (!fs.existsSync(game.gamePath)) {
         delete this.library[id];

@@ -13,6 +13,16 @@ const App = {
     Settings.init();
     GamepadNavigation.init();
     this.bindEvents();
+    window.api.library.onUpdated(() => this.scheduleLibraryReload());
+    window.api.library.onScanProgress(progress => this.updateScanProgress(progress));
+    window.api.library.onCoverChanged(game => this.updateGameCover(game));
+    window.api.game.onStatusChanged(() => this.reloadLibrary({ quiet: true }));
+    window.api.saves.onBackupCreated(event => {
+      Helpers.toast(`Backup automático criado para ${Library.find(event.gameId)?.name || 'o jogo'}.`, 'success');
+      this.loadDashboard();
+    });
+    window.api.cloud.onStatusChanged(status => this.updateCloudIndicator(status));
+    window.api.xoutput.onStatusChanged(status => this.updateXOutputIndicator(status));
     EmptyState.showLoading();
     try {
       const config = await window.api.config.get();
@@ -32,16 +42,6 @@ const App = {
       this.finishBoot();
     }
 
-    window.api.library.onUpdated(() => this.scheduleLibraryReload());
-    window.api.library.onScanProgress(progress => this.updateScanProgress(progress));
-    window.api.library.onCoverChanged(game => this.updateGameCover(game));
-    window.api.game.onStatusChanged(() => this.reloadLibrary({ quiet: true }));
-    window.api.saves.onBackupCreated(event => {
-      Helpers.toast(`Backup automático criado para ${Library.find(event.gameId)?.name || 'o jogo'}.`, 'success');
-      this.loadDashboard();
-    });
-    window.api.cloud.onStatusChanged(status => this.updateCloudIndicator(status));
-    window.api.xoutput.onStatusChanged(status => this.updateXOutputIndicator(status));
     if (shouldScanInBackground) this.scheduleBackgroundScan();
   },
 

@@ -5,6 +5,20 @@ const crypto = require('crypto');
 
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 const OAUTH_SCOPES = `${DRIVE_SCOPE} openid email`;
+const GOOGLE_REQUEST_TIMEOUT = 20_000;
+
+async function fetchWithTimeout(url, options = {}, timeout = GOOGLE_REQUEST_TIMEOUT) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error.name === 'AbortError') throw new Error('A comunicação com o Google expirou. Verifique a conexão e tente novamente.');
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 class GoogleDriveService {
   constructor(privateDir, safeStorage, shell, applicationCredentials = {}) {
@@ -186,7 +200,7 @@ class GoogleDriveService {
       redirect_uri: redirectUri
     });
     if (this.credentials.clientSecret) body.set('client_secret', this.credentials.clientSecret);
-    const response = await fetch(this.credentials.tokenUri, {
+    const response = await fetchWithTimeout(this.credentials.tokenUri, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body
@@ -198,7 +212,7 @@ class GoogleDriveService {
 
   async fetchProfile(accessToken) {
     try {
-      const response = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+      const response = await fetchWithTimeout('https://openidconnect.googleapis.com/v1/userinfo', {
         headers: { Authorization: `Bearer ${accessToken}` }
       });
       return response.ok ? await response.json() : null;
@@ -217,7 +231,7 @@ class GoogleDriveService {
       grant_type: 'refresh_token'
     });
     if (this.credentials.clientSecret) body.set('client_secret', this.credentials.clientSecret);
-    const response = await fetch(this.credentials.tokenUri, {
+    const response = await fetchWithTimeout(this.credentials.tokenUri, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body
@@ -238,7 +252,7 @@ class GoogleDriveService {
       fields: 'files(id,name,modifiedTime,size)',
       pageSize: '10'
     });
-    const response = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
+    const response = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/files?${params}`, {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
     const data = await response.json();
@@ -254,7 +268,7 @@ class GoogleDriveService {
     if (!existing) metadata.parents = ['appDataFolder'];
     const method = existing ? 'PATCH' : 'POST';
     const resource = existing ? `/files/${existing.id}` : '/files';
-    const initResponse = await fetch(`https://www.googleapis.com/upload/drive/v3${resource}?uploadType=resumable&fields=id,name,modifiedTime,size`, {
+    const initResponse = await fetchWithTimeout(`https://www.googleapis.com/upload/drive/v3${resource}?uploadType=resumable&fields=id,name,modifiedTime,size`, {
       method,
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -270,7 +284,7 @@ class GoogleDriveService {
     const uploadUrl = initResponse.headers.get('location');
     if (!uploadUrl) throw new Error('O Google Drive não retornou uma URL de upload.');
     const stats = await fs.promises.stat(filePath);
-    const uploadResponse = await fetch(uploadUrl, {
+    const uploadResponse = await fetchWithTimeout(uploadUrl, {
       method: 'PUT',
       headers: { 'Content-Length': String(stats.size), 'Content-Type': mimeType },
       body: fs.createReadStream(filePath),
@@ -295,7 +309,7 @@ class GoogleDriveService {
       Buffer.from(`\r\n--${boundary}--`)
     ]);
     const resource = existing ? `/files/${existing.id}` : '/files';
-    const response = await fetch(`https://www.googleapis.com/upload/drive/v3${resource}?uploadType=multipart&fields=id,name,modifiedTime,size`, {
+    const response = await fetchWithTimeout(`https://www.googleapis.com/upload/drive/v3${resource}?uploadType=multipart&fields=id,name,modifiedTime,size`, {
       method: existing ? 'PATCH' : 'POST',
       headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
       body
@@ -311,7 +325,7 @@ class GoogleDriveService {
   async disconnect() {
     const token = this.auth?.tokens?.refreshToken || this.auth?.tokens?.accessToken;
     if (token) {
-      await fetch('https://oauth2.googleapis.com/revoke', {
+      await fetchWithTimeout('https://oauth2.googleapis.com/revoke', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ token })
